@@ -21,3 +21,8 @@ timeoutMs = 20000
 
 [objectStorage]
 defaultBucketID = "replit-objstore-b0b71f05-e654-437f-8e5d-5a90d34315e0"
+
+[userenv]
+
+[userenv.shared]
+EXPO_PUBLIC_API_BASE_URL = "https://db2a4672-658d-4b41-a6fd-aca8428cf013-00-jlaipag1e5pw.janeway.replit.dev"
