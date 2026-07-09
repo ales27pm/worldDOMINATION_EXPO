@@ -60,15 +60,29 @@ Field is `accept: boolean` (not `accepted: boolean`).
 `conquered: boolean` (not `winner`), `attacker: number` (not `attackerId`). Has no `id` field — use a ref counter nonce in parent for animation identity.
 
 ### Authentic RISK II GFX Assets
-Extracted from 8 `.gfx` files (40-byte header, sprite directory, 16-bit big-endian RGB565/BGR565 pixels). Key assets in `extracted_gfx/` and copied to `artifacts/mobile/assets/images/`:
-- `world-map.png` — 1536×1024 authentic RISK II world map (replaced parchment placeholder)
-- `dice/red_1..6.png` — red attacker dice (RISK II pixel-art, tinted)
-- `dice/white_1..6.png` — white defender dice
-- `dice/blue_1..6.png`, `teal_1..6.png` — original color variants
-- `explosion/frame_00..20.png` — 21-frame battle explosion animation (120×120)
+Extracted from 8 `.gfx` files. Bundled in `artifacts/mobile/assets/images/`:
+- `world-map.png` — 1536×1024 RISK II world map
+- `dice/red_1..6.png`, `white_1..6.png` — fallback dice sprites (used for missing App Storage faces)
+
+### App Storage Assets (live, bucket replit-objstore-6751d8fb-0a63-427b-867d-c26722039490)
+All accessed via `artifacts/mobile/lib/storage.ts` helper (`storageUrl(objectPath)`). Public URL format:
+`https://replit.com/object-storage/storage/v1/b/{BUCKET_ID}/o/{encoded}?alt=media`
+Contents:
+- `public/risk/dice/red_1,4,5,6.png` + `gold_1..5.png` — attacker/defender dice
+- `public/risk/fireworks/f00..f20.png` — 21-frame conquest fireworks animation
+- `public/battle-views/{territoryId}.webp` — per-territory battle backgrounds (48 territories)
+- `public/risk/sfx/*.mp3` — full sound library (dice_roll, cannon_a/b/c, clash_a/b/c, click, defeat, fanfare, roar, stab, thud, tick, trumpet, volley_long/short, whoosh, chime)
+
+Missing from bucket: red_2.png, red_3.png → fall back to bundled red_2/3. gold_6.png → fall back to bundled white_6.
 
 ### DieFace Animation Nonce Pattern
-Metro bundler requires static `require()` for all image assets — no dynamic requires. DieFace animation must be keyed by a `nonce` prop (ref counter incremented in parent per battle), not `value`, to ensure re-animation on identical consecutive rolls.
+Metro bundler requires static `require()` for all bundled image assets — no dynamic requires. DieFace animation must be keyed by a `nonce` prop (ref counter incremented in parent per battle). For network (App Storage) images use `{ uri: url }` as `ImageSourcePropType`. Both types mixed in same Record — valid at runtime.
+
+### FireworksOverlay Pattern
+Keyed by `nonce` (not a separate ref counter) when `conquered` is true — ensures remount on consecutive conquests. Must `clearInterval` inside the `RNAnimated.timing` callback (not only in cleanup) to stop frame ticks after fade-out completes while component stays mounted.
+
+### useSound — App Storage Audio
+All sounds now stream from App Storage URIs. `Audio.Sound.createAsync({ uri }, ...)` is valid in expo-av. No bundled audio files needed.
 
 ### ErrorBoundary
 Named export: `import { ErrorBoundary } from '@/components/ErrorBoundary'` (not default).

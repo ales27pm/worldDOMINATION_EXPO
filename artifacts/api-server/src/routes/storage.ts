@@ -21,6 +21,7 @@ import {
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
 
+
 function hasAuthenticatedSession(
   req: Request,
 ): req is Request & { isAuthenticated: () => boolean } {
