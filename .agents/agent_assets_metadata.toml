@@ -1,0 +1,110 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "sh9E5HRT4hHnr9xwm9m-f"
+uri = "file://artifacts/mobile/assets/sounds/cannon.mp3"
+type = "audio"
+title = "cannon"
+
+[[outputs]]
+id = "-KHJ8UqtlCbB4AVw5zTZV"
+uri = "file://artifacts/mobile/assets/sounds/victory.mp3"
+type = "audio"
+title = "victory"
+
+[[outputs]]
+id = "PwUquDE1fSnG8uV1VYZtU"
+uri = "file://artifacts/mobile/assets/sounds/deploy.mp3"
+type = "audio"
+title = "deploy"
+
+[[outputs]]
+id = "l34BBhHf4K6GwxIA4NIm5"
+uri = "file://artifacts/mobile/assets/sounds/card-shuffle_2.mp3"
+type = "audio"
+title = "card-shuffle"
+
+[[outputs]]
+id = "2XfTiKen0j0S1YPg2IDKC"
+uri = "file://artifacts/mobile/assets/sounds/conquest_2.mp3"
+type = "audio"
+title = "conquest"
+
+[[outputs]]
+id = "sz9rV7VPKsuK1AHfnsAA4"
+uri = "file://artifacts/mobile/assets/sounds/cannon_2.mp3"
+type = "audio"
+title = "cannon"
+
+[[outputs]]
+id = "bVN-MbE46ZMB9hT1_Wr5c"
+uri = "file://artifacts/mobile/assets/sounds/victory_2.mp3"
+type = "audio"
+title = "victory"
+
+[[outputs]]
+id = "VqSdfePqufKA17zQLsa4k"
+uri = "file://artifacts/mobile/assets/sounds/deploy_2.mp3"
+type = "audio"
+title = "deploy"
+
+[[outputs]]
+id = "ThAwRPknsJMuHRi4auZQF"
+uri = "file://artifacts/mobile/assets/sounds/button-tap.mp3"
+type = "audio"
+title = "button-tap"
+
+[[outputs]]
+id = "6JFIlXH8P_s9AJV4_BkuW"
+uri = "file://artifacts/mobile/assets/sounds/dice-roll_2.mp3"
+type = "audio"
+title = "dice-roll"
+
+[[outputs]]
+id = "IuFvQOPbvYYMsfSIY1gns"
+uri = "file://extracted_gfx/world_map.png"
+type = "image"
+title = "RISK II World Map (1600×1200)"
+
+[[outputs]]
+id = "SbbbT7NsYI_jD_dyYF7n0"
+uri = "file://extracted_gfx/frontend_bg_00.png"
+type = "image"
+title = "RISK II Frontend Background #0 (800×600)"
+
+[[outputs]]
+id = "z4q2cZqDxlk5u6zgmbui5"
+uri = "file://extracted_gfx/frontend_bg_10.png"
+type = "image"
+title = "RISK II Frontend Background #10 (800×600)"
+
+[[outputs]]
+id = "Z8M6wIPQfWNMLeQwhnH7B"
+uri = "file://extracted_gfx/misc_00.png"
+type = "image"
+title = "RISK II Misc Scene #0 (800×600)"
+
+[[outputs]]
+id = "Pqp7p7GqnPrDT2trc81I2"
+uri = "file://extracted_gfx/battle_00.png"
+type = "image"
+title = "RISK II Battle View #0 (800×600)"
+
+[[outputs]]
+id = "Sfw0CLIxNmsq_5QYby0KT"
+uri = "file://extracted_gfx/frontend_sheet.png"
+type = "image"
+title = "RISK II Frontend UI Sprites (169 sprites)"
+
+[[outputs]]
+id = "-7ZY0MgOZe6hsoOSBITQ6"
+uri = "file://extracted_gfx/riskii_sheet_200.png"
+type = "image"
+title = "RISK II Game Sprites (first 200 of 885)"
+
+[[outputs]]
+id = "GIX5r2JFLCWzdSAIABS5N"
+uri = "file://extracted_gfx/lang_00.png"
+type = "image"
+title = "RISK II Text/Lang Sprite #0 (349×70)"

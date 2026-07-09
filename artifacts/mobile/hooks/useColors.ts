@@ -1,8 +1,8 @@
 import { Colors } from '@/constants/colors';
 
 /**
- * Returns the design tokens for the current color scheme.
- * World Domination uses a fixed dark Napoleonic palette.
+ * Returns the Risk board game color palette.
+ * A fixed design — no light/dark switching.
  */
 export function useColors() {
   return Colors;

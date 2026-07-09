@@ -3,12 +3,14 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useGame } from '@/context/GameContext';
+import { useSound } from '@/hooks/useSound';
+import { useHaptics } from '@/hooks/useHaptics';
 import { aiNextAction } from '@/game/ai';
 import { allianceBetween } from '@/game/analysis';
 import { electionBudget } from '@/game/engine';
 import { TERRITORY_MAP } from '@/game/mapData';
 import { Colors } from '@/constants/colors';
-import type { GameState, TerritoryId } from '@/game/types';
+import type { GameAction, GameState, TerritoryId } from '@/game/types';
 import GameMap from '@/components/game/GameMap';
 import GamePanel from '@/components/game/GamePanel';
 import PlayerRoster from '@/components/game/PlayerRoster';
@@ -22,10 +24,33 @@ import {
   VictoryOverlay,
 } from '@/components/game/GameOverlays';
 
+// ─── Wrapper: handles missing-game guard so inner component has stable hooks ──
 export default function GameScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const { game, dispatch, abandonGame } = useGame();
+
+  useEffect(() => {
+    if (!game) router.replace('/');
+  }, [game]);
+
+  if (!game) return null;
+  return <GameScreenInner game={game} dispatch={dispatch} abandonGame={abandonGame} />;
+}
+
+// ─── Inner: all hooks unconditionally called ──────────────────────────────────
+function GameScreenInner({
+  game,
+  dispatch,
+  abandonGame,
+}: {
+  game: GameState;
+  dispatch: (a: GameAction) => void;
+  abandonGame: () => void;
+}) {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const play = useSound();
+  const haptics = useHaptics();
 
   const [selected, setSelected] = useState<TerritoryId | null>(null);
   const [deployAmount, setDeployAmount] = useState(1);
@@ -34,23 +59,15 @@ export default function GameScreen() {
   const [rosterOpen, setRosterOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
 
-  // Redirect if no game
-  useEffect(() => {
-    if (!game) router.replace('/');
-  }, [game]);
-
-  if (!game) return null;
-
   const player = game.players[game.currentPlayer];
   const isHumanTurn = player?.isHuman ?? false;
   const isHumanActive = isHumanTurn && !game.awaitingHandoff && !game.pendingProposal;
 
   // ── AI Loop ────────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!game || game.phase === 'gameOver') return;
+    if (game.phase === 'gameOver') return;
     if (isHumanTurn || game.awaitingHandoff || game.pendingProposal) return;
     if (game.pendingOccupy) {
-      // AI handles occupy immediately
       const timer = setTimeout(() => {
         const action = aiNextAction(game);
         if (action) dispatch(action);
@@ -73,7 +90,7 @@ export default function GameScreen() {
 
   // ── Territory interaction sets ─────────────────────────────────────────────
   const { interactive, targets } = useMemo(() => {
-    if (!game || !player || !isHumanActive) {
+    if (!player || !isHumanActive) {
       return { interactive: new Set<TerritoryId>(), targets: new Set<TerritoryId>() };
     }
     const phase = game.phase;
@@ -103,29 +120,21 @@ export default function GameScreen() {
       }
     } else if (phase === 'attack') {
       if (!selected) {
-        // Show attackable source territories
         for (const id of game.activeIds) {
           const ter = game.territories[id];
           if (ter.owner !== player.id || ter.armies < 2) continue;
-          const neighbors = game.activeIds.filter(
-            (n) => game.territories[n].owner !== player.id,
-          );
-          // Show if has armies (neighbor check is approximate for performance)
           if (ter.armies >= 2) inter.add(id);
         }
       } else {
-        // Show this territory as interactive
         const selTer = game.territories[selected];
         if (selTer?.owner === player.id && selTer.armies >= 2) {
           inter.add(selected);
-          // Show attackable neighbors as targets
           const def = TERRITORY_MAP[selected];
           if (def) {
             for (const n of def.neighbors) {
               if (!activeSet.has(n)) continue;
               const nt = game.territories[n as TerritoryId];
               if (nt?.owner !== player.id) {
-                // Check alliance
                 const alliance = allianceBetween(game, player.id, nt.owner);
                 if (!alliance || alliance.level < 2) {
                   tgts.add(n as TerritoryId);
@@ -137,7 +146,6 @@ export default function GameScreen() {
       }
     } else if (phase === 'fortify') {
       if (!selected) {
-        // Show territories with armies to move
         for (const id of game.activeIds) {
           const ter = game.territories[id];
           if (ter.owner === player.id && ter.armies >= 2) inter.add(id);
@@ -166,49 +174,81 @@ export default function GameScreen() {
     const ter = game.territories[id];
 
     if (phase === 'territoryGrab' && ter.owner === -1) {
+      play('tap'); haptics.light();
       dispatch({ type: 'CLAIM_TERRITORY', territory: id });
       return;
     }
     if (phase === 'chooseCapital' && ter.owner === player?.id && !player?.capital) {
+      play('tap'); haptics.light();
       dispatch({ type: 'CHOOSE_CAPITAL', territory: id });
       return;
     }
     if (phase === 'initialDeploy' && ter.owner === player?.id) {
+      play('deploy'); haptics.light();
       dispatch({ type: 'PLACE_INITIAL', territory: id });
       return;
     }
     if (phase === 'attack') {
       if (selected && targets.has(id)) {
-        // Attack!
+        play('cannon'); haptics.medium();
         dispatch({ type: 'ATTACK', from: selected, to: id, allOut });
         setSelected(null);
         return;
       }
-      // Select source
       if (ter.owner === player?.id && ter.armies >= 2) {
+        play('tap'); haptics.light();
         setSelected(id === selected ? null : id);
         return;
       }
     }
     if (phase === 'fortify') {
       if (selected && targets.has(id)) {
+        play('tap'); haptics.light();
         dispatch({ type: 'FORTIFY', from: selected, to: id, count: deployAmount });
         setSelected(null);
         setDeployAmount(1);
         return;
       }
       if (ter.owner === player?.id) {
+        play('tap'); haptics.light();
         setSelected(id === selected ? null : id);
         return;
       }
     }
-    if ((phase === 'reinforcement') && ter.owner === player?.id) {
+    if (phase === 'reinforcement' && ter.owner === player?.id) {
+      play('tap'); haptics.light();
       setSelected(id === selected ? null : id);
       return;
     }
-    // Deselect on empty tap
     if (id !== selected) setSelected(null);
-  }, [game, selected, targets, allOut, deployAmount, isHumanActive, dispatch, player]);
+  }, [game, selected, targets, allOut, deployAmount, isHumanActive, dispatch, player, play, haptics]);
+
+  // ── Sound effects on game events ───────────────────────────────────────────
+  const prevPhase = useRef(game.phase);
+  const prevBattleKey = useRef<string | null>(null);
+  const prevCardsOpen = useRef(false);
+
+  useEffect(() => {
+    if (game.phase === 'gameOver' && prevPhase.current !== 'gameOver') {
+      play('victory'); haptics.success();
+    }
+    prevPhase.current = game.phase;
+  }, [game.phase]);
+
+  useEffect(() => {
+    if (!game.lastBattle) return;
+    const key = `${game.lastBattle.from}-${game.lastBattle.to}-${game.lastBattle.rounds}`;
+    if (key !== prevBattleKey.current) {
+      prevBattleKey.current = key;
+      play('dice');
+      if (game.lastBattle.conquered) play('conquest');
+    }
+  }, [game.lastBattle]);
+
+  useEffect(() => {
+    if (cardsOpen && !prevCardsOpen.current) play('card');
+    prevCardsOpen.current = cardsOpen;
+  }, [cardsOpen]);
 
   // ── Victory exit ───────────────────────────────────────────────────────────
   const handleVictoryExit = useCallback(async () => {
@@ -216,7 +256,7 @@ export default function GameScreen() {
     router.replace('/');
   }, [abandonGame, router]);
 
-  // ── Election UI (simple) ───────────────────────────────────────────────────
+  // ── Election UI ────────────────────────────────────────────────────────────
   const renderElectionPanel = () => {
     const election = game.election;
     if (!election || game.phase !== 'election') return null;
@@ -252,7 +292,7 @@ export default function GameScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Top safe area + mini status */}
+      {/* Top bar */}
       <SafeAreaView edges={['top']} style={styles.topBar}>
         <View style={styles.topRow}>
           <Pressable
@@ -289,7 +329,7 @@ export default function GameScreen() {
         />
       </View>
 
-      {/* Battle report (inline, shown above panel) */}
+      {/* Battle report */}
       {game.lastBattle && game.phase === 'attack' && (
         <View style={styles.battleContainer}>
           <BattleReportCard battle={game.lastBattle} game={game} />
@@ -318,18 +358,12 @@ export default function GameScreen() {
         </SafeAreaView>
       )}
 
-      {/* Roster overlay (side panel) */}
-      {rosterOpen && (
-        <View style={styles.rosterOverlay}>
-          <View style={styles.rosterHeader}>
-            <Text style={styles.rosterTitle}>COMMANDERS</Text>
-            <Pressable onPress={() => setRosterOpen(false)}>
-              <Text style={styles.rosterClose}>✕</Text>
-            </Pressable>
-          </View>
-          <PlayerRoster game={game} />
-        </View>
-      )}
+      {/* Roster modal */}
+      <PlayerRoster
+        game={game}
+        visible={rosterOpen}
+        onClose={() => setRosterOpen(false)}
+      />
 
       {/* Modals */}
       <HandoffOverlay game={game} dispatch={dispatch} />
@@ -355,59 +389,44 @@ export default function GameScreen() {
 
 function phaseLabel(phase: string): string {
   switch (phase) {
-    case 'territoryGrab': return 'CLAIMING';
-    case 'election': return 'ELECTION';
-    case 'initialDeploy': return 'INITIAL DEPLOY';
-    case 'chooseCapital': return 'CHOOSE CAPITAL';
-    case 'reinforcement': return 'REINFORCE';
-    case 'attack': return 'ATTACK';
-    case 'fortify': return 'FORTIFY';
-    case 'gameOver': return 'GAME OVER';
-    default: return phase.toUpperCase();
+    case 'territoryGrab':  return 'CLAIMING';
+    case 'election':       return 'ELECTION';
+    case 'initialDeploy':  return 'INITIAL DEPLOY';
+    case 'chooseCapital':  return 'CHOOSE CAPITAL';
+    case 'reinforcement':  return 'REINFORCE';
+    case 'attack':         return 'ATTACK';
+    case 'fortify':        return 'FORTIFY';
+    case 'gameOver':       return 'GAME OVER';
+    default:               return phase.toUpperCase();
   }
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.bg },
-  topBar: { backgroundColor: Colors.bgCard, borderBottomWidth: 1, borderBottomColor: Colors.border },
-  topRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, gap: 8 },
-  exitBtn: { padding: 4 },
-  exitText: { color: Colors.gold, fontFamily: 'Inter_500Medium', fontSize: 13 },
-  turnInfo: { flex: 1, alignItems: 'center', gap: 2 },
-  turnText: { color: Colors.text, fontFamily: 'Inter_700Bold', fontSize: 14 },
-  phaseText: { color: Colors.goldDim, fontFamily: 'Inter_500Medium', fontSize: 10, letterSpacing: 2 },
+  container:   { flex: 1, backgroundColor: Colors.bg },
+  topBar:      { backgroundColor: Colors.bgCard, borderBottomWidth: 1, borderBottomColor: Colors.border },
+  topRow:      { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, gap: 8 },
+  exitBtn:     { padding: 4 },
+  exitText:    { color: Colors.gold, fontFamily: 'Cinzel_600SemiBold', fontSize: 12 },
+  turnInfo:    { flex: 1, alignItems: 'center', gap: 2 },
+  turnText:    { color: Colors.text, fontFamily: 'Cinzel_700Bold', fontSize: 14 },
+  phaseText:   { color: Colors.goldDim, fontFamily: 'Cinzel_400Regular', fontSize: 9, letterSpacing: 2 },
   playerCount: { alignItems: 'flex-end' },
-  aliveText: { color: Colors.textMuted, fontFamily: 'Inter_400Regular', fontSize: 12 },
-  mapContainer: { flex: 1 },
-  battleContainer: { paddingHorizontal: 12, paddingVertical: 4 },
-  bottomBar: { backgroundColor: Colors.bgCard, borderTopWidth: 1, borderTopColor: Colors.border },
+  aliveText:   { color: Colors.textMuted, fontFamily: 'Cinzel_400Regular', fontSize: 11 },
+  mapContainer:   { flex: 1 },
+  battleContainer:{ paddingHorizontal: 12, paddingVertical: 4 },
+  bottomBar:   { backgroundColor: Colors.bgCard, borderTopWidth: 1, borderTopColor: Colors.border },
 
   // Election
   electionPanel: {
     backgroundColor: Colors.bgCard, borderTopWidth: 1, borderTopColor: Colors.goldDim,
     padding: 12, gap: 6,
   },
-  electionTitle: { color: Colors.gold, fontFamily: 'Inter_700Bold', fontSize: 13, letterSpacing: 2 },
-  electionBid: { color: Colors.text, fontFamily: 'Inter_500Medium', fontSize: 14 },
-  electionPoints: { color: Colors.textMuted, fontFamily: 'Inter_400Regular', fontSize: 12 },
-  electionBtns: { flexDirection: 'row', gap: 8 },
-  bidBtn: { backgroundColor: Colors.gold, paddingVertical: 8, paddingHorizontal: 16 },
-  bidBtnText: { color: Colors.bg, fontFamily: 'Inter_700Bold', fontSize: 13 },
-  passBtn: { borderWidth: 1, borderColor: Colors.border, paddingVertical: 8, paddingHorizontal: 16 },
-  passBtnText: { color: Colors.textMuted, fontFamily: 'Inter_500Medium', fontSize: 13 },
-
-  // Roster overlay
-  rosterOverlay: {
-    position: 'absolute',
-    right: 0, top: 0, bottom: 0,
-    width: 240,
-    backgroundColor: Colors.bgModal,
-    borderLeftWidth: 1, borderLeftColor: Colors.border,
-    padding: 12,
-    gap: 12,
-    zIndex: 100,
-  },
-  rosterHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  rosterTitle: { color: Colors.gold, fontFamily: 'Inter_700Bold', fontSize: 12, letterSpacing: 3 },
-  rosterClose: { color: Colors.textMuted, fontSize: 18, padding: 4 },
+  electionTitle:  { color: Colors.gold, fontFamily: 'Cinzel_700Bold', fontSize: 12, letterSpacing: 2 },
+  electionBid:    { color: Colors.text, fontFamily: 'Cinzel_600SemiBold', fontSize: 14 },
+  electionPoints: { color: Colors.textMuted, fontFamily: 'Cinzel_400Regular', fontSize: 12 },
+  electionBtns:   { flexDirection: 'row', gap: 8 },
+  bidBtn:         { backgroundColor: Colors.gold, paddingVertical: 8, paddingHorizontal: 16 },
+  bidBtnText:     { color: Colors.bg, fontFamily: 'Cinzel_700Bold', fontSize: 13 },
+  passBtn:        { borderWidth: 1, borderColor: Colors.border, paddingVertical: 8, paddingHorizontal: 16 },
+  passBtnText:    { color: Colors.textMuted, fontFamily: 'Cinzel_600SemiBold', fontSize: 12 },
 });
