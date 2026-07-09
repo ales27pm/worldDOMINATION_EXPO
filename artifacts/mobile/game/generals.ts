@@ -1,0 +1,22 @@
+import type { GeneralDef, GeneralId } from "./types";
+
+export const GENERALS: Record<GeneralId, GeneralDef> = {
+  campbell: { id: "campbell", name: "Campbell", aggression: 0.5, riskTolerance: 0.4, unpredictability: 0.1, honorLevel: 0.6, difficulty: 3, description: "Cautious but focused on missions. Stable and forgiving." },
+  mackenzie: { id: "mackenzie", name: "Mackenzie", aggression: 0.6, riskTolerance: 0.5, unpredictability: 0.25, honorLevel: 0.8, difficulty: 3, description: "Never forgets a betrayal. Honors alliances. Mission-driven." },
+  wellington: { id: "wellington", name: "Wellington", aggression: 0.7, riskTolerance: 0.6, unpredictability: 0.3, honorLevel: 0.7, difficulty: 5, description: "Master strategist. Deliberate but unpredictable. Top tier." },
+  bonaparte: { id: "bonaparte", name: "Bonaparte", aggression: 0.9, riskTolerance: 0.8, unpredictability: 0.7, honorLevel: 0.3, difficulty: 5, description: "Aggressive and vengeful. Strikes fast. Erratic but deadly." },
+  marmont: { id: "marmont", name: "Marmont", aggression: 0.95, riskTolerance: 0.95, unpredictability: 0.6, honorLevel: 0.2, difficulty: 4, description: "Biggest risk taker. Devastating attacks. Little regard for losses." },
+  barbacena: { id: "barbacena", name: "Barbacena", aggression: 0.8, riskTolerance: 0.7, unpredictability: 0.2, honorLevel: 0.4, difficulty: 3, description: "Aggressive with good memory. Focused on world domination." },
+  dErlon: { id: "dErlon", name: "D'Erlon", aggression: 0.25, riskTolerance: 0.2, unpredictability: 0.1, honorLevel: 0.85, difficulty: 2, description: "Most cautious general. Defends over attacks. Highly honorable." },
+  maransin: { id: "maransin", name: "Maransin", aggression: 0.75, riskTolerance: 0.65, unpredictability: 0.65, honorLevel: 0.25, difficulty: 2, description: "Strikes first, retreats fast. Erratic and dangerous neighbor." },
+  solignac: { id: "solignac", name: "Solignac", aggression: 0.4, riskTolerance: 0.35, unpredictability: 0.4, honorLevel: 0.35, difficulty: 1, description: "Inexperienced but enthusiastic. Bad memory. Don't underestimate." },
+  sherbrooke: { id: "sherbrooke", name: "Sherbrooke", aggression: 0.45, riskTolerance: 0.4, unpredictability: 0.15, honorLevel: 0.95, difficulty: 3, description: "Most honorable. Loves alliances. Slow and methodical." },
+  aubert: { id: "aubert", name: "Aubert", aggression: 0.7, riskTolerance: 0.6, unpredictability: 0.9, honorLevel: 0.15, difficulty: 2, description: "Most erratic general. Cares nothing for alliances. Dangerous." },
+  spencer: { id: "spencer", name: "Spencer", aggression: 0.55, riskTolerance: 0.45, unpredictability: 0.3, honorLevel: 0.65, difficulty: 3, description: "Plays by the book. Generally honorable until desperate." },
+  taupin: { id: "taupin", name: "Taupin", aggression: 0.85, riskTolerance: 0.75, unpredictability: 0.55, honorLevel: 0.3, difficulty: 4, description: "Calculating warmonger. Unstable edge. Obsessed with missions." },
+  freire: { id: "freire", name: "Freire", aggression: 0.35, riskTolerance: 0.3, unpredictability: 0.5, honorLevel: 0.15, difficulty: 1, description: "Inexperienced and untrustworthy. Ignores border threats." },
+  vauban: { id: "vauban", name: "Vauban", aggression: 0.8, riskTolerance: 0.7, unpredictability: 0.35, honorLevel: 0.1, difficulty: 4, description: "Lives by the sword. Vengeful. Fast, decisive, formidable." },
+  baird: { id: "baird", name: "Baird", aggression: 0.85, riskTolerance: 0.8, unpredictability: 0.8, honorLevel: 0.1, difficulty: 5, description: "Little honor, much aggression. Dangerous and unstable." },
+};
+
+export const GENERAL_LIST: GeneralDef[] = Object.values(GENERALS);

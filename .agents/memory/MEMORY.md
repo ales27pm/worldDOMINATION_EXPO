@@ -1,0 +1,1 @@
+- [World Domination mobile port](world-domination-mobile.md) — complete Expo app at artifacts/mobile; all game logic ported, key architecture decisions recorded.
