@@ -135,7 +135,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     letterSpacing: 4,
     lineHeight: 56,
-    textShadow: `0 0 12px ${Colors.gold}`,
+    textShadowColor: Colors.gold,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 12,
   },
   divider: {
     width: 80,

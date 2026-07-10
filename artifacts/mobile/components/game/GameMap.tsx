@@ -2,12 +2,37 @@ import React, { useCallback, useMemo, useRef } from 'react';
 import { Dimensions, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
-import Svg, { Circle, G, Path, Rect, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, G, Image as SvgImage, Path, Rect, Text as SvgText } from 'react-native-svg';
 import { borderThreat, largestEmpire } from '@/game/analysis';
 import { TERRITORY_MAP } from '@/game/mapData';
 import { SHAPES_H, SHAPES_W, TERRITORY_PATHS } from '@/game/mapShapes';
 import type { GameState, TerritoryId } from '@/game/types';
 import { Colors } from '@/constants/colors';
+import { assetUrl } from '@/lib/assetUrl';
+
+// ─── Piece sprites ────────────────────────────────────────────────────────────
+const PIECE_INFANTRY = assetUrl('public/pieces/infantry.png');
+const PIECE_CAVALRY  = assetUrl('public/pieces/cavalry.png');
+const PIECE_CANNON   = assetUrl('public/pieces/cannon.png');
+const MAP_PARCHMENT  = assetUrl('public/map/parchment.png');
+
+function pieceForArmies(armies: number): string {
+  if (armies >= 15) return PIECE_CANNON;
+  if (armies >= 5)  return PIECE_CAVALRY;
+  return PIECE_INFANTRY;
+}
+
+// Piece display dimensions in SVG units
+const PIECE_W: Record<string, number> = {
+  [PIECE_INFANTRY]: 28,
+  [PIECE_CAVALRY]:  42,
+  [PIECE_CANNON]:   46,
+};
+const PIECE_H: Record<string, number> = {
+  [PIECE_INFANTRY]: 38,
+  [PIECE_CAVALRY]:  34,
+  [PIECE_CANNON]:   26,
+};
 
 // ─── View modes ───────────────────────────────────────────────────────────────
 
@@ -267,8 +292,15 @@ export default function GameMap({
             height={SHAPES_H}
             viewBox={`0 0 ${SHAPES_W} ${SHAPES_H}`}
           >
-            {/* Ocean */}
-            <Rect width={SHAPES_W} height={SHAPES_H} fill={Colors.ocean} />
+            {/* Parchment map background */}
+            <SvgImage
+              href={{ uri: MAP_PARCHMENT }}
+              x={0}
+              y={0}
+              width={SHAPES_W}
+              height={SHAPES_H}
+              preserveAspectRatio="xMidYMid slice"
+            />
 
             {/* Territory fills */}
             {game.activeIds.map((id) => {
@@ -319,6 +351,11 @@ export default function GameMap({
                   key={id}
                   d={path}
                   fill={fill}
+                  fillOpacity={
+                    isSelected || isTarget ? 0.75
+                      : viewMode === 'board' ? 0.55
+                      : 0.60
+                  }
                   stroke={
                     isSelected
                       ? Colors.territorySelected
@@ -326,7 +363,7 @@ export default function GameMap({
                       ? Colors.territoryTarget
                       : Colors.territoryStroke
                   }
-                  strokeWidth={isSelected || isTarget ? 2.5 : 1}
+                  strokeWidth={isSelected || isTarget ? 2.5 : 1.2}
                 />
               );
             })}
@@ -355,7 +392,7 @@ export default function GameMap({
                 );
               })}
 
-            {/* Army counters */}
+            {/* Army pieces (figure sprites + count badge) */}
             {game.activeIds.map((id) => {
               const ter = game.territories[id];
               const def = TERRITORY_MAP[id];
@@ -363,41 +400,65 @@ export default function GameMap({
               const svgCx = def.x * SHAPES_W;
               const svgCy = def.y * SHAPES_H;
               const owner = ter.owner;
-              const borderColor =
+              const ownerColor =
                 owner === -1 ? '#888' : (game.players[owner]?.color ?? '#888');
               const isSelected = id === selected;
               const isTarget = targets.has(id);
-              const bgColor = isSelected
-                ? '#3a2800'
-                : isTarget
-                ? '#3a0a00'
-                : '#1a0f05';
-              const textColor = isSelected
-                ? Colors.gold
-                : isTarget
-                ? Colors.textCrimson
-                : Colors.text;
-              const r =
-                ter.armies >= 100 ? 18 : ter.armies >= 10 ? 15 : 13;
-              const fontSize =
-                ter.armies >= 100 ? 9 : ter.armies >= 10 ? 11 : 12;
+
+              const pieceUri = pieceForArmies(ter.armies);
+              const pw = PIECE_W[pieceUri];
+              const ph = PIECE_H[pieceUri];
+
+              // Badge colour
+              const badgeBg = isSelected ? '#3a2800' : isTarget ? '#3a0a00' : 'rgba(20,12,4,0.88)';
+              const badgeTxt = isSelected ? Colors.gold : isTarget ? Colors.textCrimson : Colors.text;
+              const badgeR = ter.armies >= 100 ? 10 : 9;
+              const badgeFontSize = ter.armies >= 100 ? 7 : ter.armies >= 10 ? 8 : 9;
+
+              // Anchor: figure sits centred on svgCx, bottom at svgCy + 6
+              const imgX = svgCx - pw / 2;
+              const imgY = svgCy - ph + 6;
+              // Badge sits at bottom-right of figure
+              const badgeCx = svgCx + pw / 2 - 2;
+              const badgeCy = svgCy + 8;
+
               return (
                 <G key={`army-${id}`}>
+                  {/* Base disc in player colour */}
                   <Circle
                     cx={svgCx}
-                    cy={svgCy}
-                    r={r + 2}
-                    fill={bgColor}
-                    stroke={borderColor}
-                    strokeWidth={1.5}
+                    cy={svgCy + 6}
+                    r={pw / 2 + 2}
+                    fill={ownerColor}
+                    fillOpacity={isSelected ? 0.85 : isTarget ? 0.75 : 0.7}
+                    stroke={isSelected ? Colors.gold : isTarget ? Colors.textCrimson : ownerColor}
+                    strokeWidth={isSelected || isTarget ? 2 : 0.5}
+                  />
+                  {/* Figure sprite */}
+                  <SvgImage
+                    href={{ uri: pieceUri }}
+                    x={imgX}
+                    y={imgY}
+                    width={pw}
+                    height={ph}
+                    preserveAspectRatio="xMidYMid meet"
+                  />
+                  {/* Army count badge */}
+                  <Circle
+                    cx={badgeCx}
+                    cy={badgeCy}
+                    r={badgeR}
+                    fill={badgeBg}
+                    stroke={ownerColor}
+                    strokeWidth={1}
                   />
                   <SvgText
-                    x={svgCx}
-                    y={svgCy + fontSize / 3}
+                    x={badgeCx}
+                    y={badgeCy + badgeFontSize / 3}
                     textAnchor="middle"
-                    fontSize={fontSize}
+                    fontSize={badgeFontSize}
                     fontWeight="bold"
-                    fill={textColor}
+                    fill={badgeTxt}
                   >
                     {ter.armies}
                   </SvgText>
