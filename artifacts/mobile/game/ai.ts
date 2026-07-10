@@ -17,15 +17,20 @@ function generalOf(state: GameState, playerId: number): GeneralDef {
   return (generalId && GENERALS[generalId]) || GENERALS.spencer;
 }
 
+function neighborsOf(id: TerritoryId): TerritoryId[] {
+  return TERRITORY_MAP[id]?.neighbors ?? [];
+}
+
 function activeNeighbors(state: GameState, id: TerritoryId): TerritoryId[] {
   const active = new Set(state.activeIds);
-  return (TERRITORY_MAP[id]?.neighbors ?? []).filter((n) => active.has(n));
+  return neighborsOf(id).filter((n) => active.has(n));
 }
 
 function borderThreat(state: GameState, id: TerritoryId, playerId: number): number {
   return analysisBorderThreat(state, id, playerId);
 }
 
+/** Score how valuable conquering a territory is toward continent control. */
 function continentValue(state: GameState, id: TerritoryId, playerId: number): number {
   const continent: ContinentId = TERRITORY_MAP[id].continent;
   const groups = continentTerritories(state.setup.useExtraTerritories);
@@ -44,6 +49,7 @@ function bestAttack(state: GameState, playerId: number, general: GeneralDef): At
     for (const to of activeNeighbors(state, from)) {
       const toState = state.territories[to];
       if (toState.owner === playerId) continue;
+      // I-Com: honor standing pacts (low-honor generals may occasionally betray).
       const alliance = allianceBetween(state, playerId, toState.owner);
       if (alliance) {
         const betray = Math.random() < (1 - general.honorLevel) * 0.06;
@@ -72,6 +78,10 @@ function bestAttack(state: GameState, playerId: number, general: GeneralDef): At
   return options[0] ?? null;
 }
 
+/**
+ * Compute the next action for the current AI player. Stateless per tick so the
+ * general re-evaluates the field after every dispatch.
+ */
 export function aiNextAction(state: GameState): GameAction | null {
   const player = state.players[state.currentPlayer];
   if (!player || player.isHuman || state.phase === "gameOver") return null;
@@ -80,12 +90,20 @@ export function aiNextAction(state: GameState): GameAction | null {
 
   if (state.phase === "territoryGrab") {
     const open = state.activeIds.filter((id) => state.territories[id].owner === -1);
-    const scored = open.map((id) => ({
-      id,
-      score: continentValue(state, id, player.id) * 2 +
-        activeNeighbors(state, id).filter((n) => state.territories[n].owner === player.id).length * 0.8 +
-        general.unpredictability * Math.random() * 3,
-    })).sort((a, b) => b.score - a.score);
+    const scored = open
+      .map((id) => {
+        const friendlyNeighbors = activeNeighbors(state, id).filter(
+          (n) => state.territories[n].owner === player.id,
+        ).length;
+        return {
+          id,
+          score:
+            continentValue(state, id, player.id) * 2 +
+            friendlyNeighbors * 0.8 +
+            general.unpredictability * Math.random() * 3,
+        };
+      })
+      .sort((a, b) => b.score - a.score);
     const pick = scored[0];
     return pick ? { type: "CLAIM_TERRITORY", territory: pick.id } : null;
   }
@@ -94,12 +112,19 @@ export function aiNextAction(state: GameState): GameAction | null {
     const election = state.election;
     if (election.highBidder === player.id || election.passed.includes(player.id)) return null;
     const id = election.territory;
+    const friendlyNeighbors = activeNeighbors(state, id).filter(
+      (n) => state.territories[n].owner === player.id,
+    ).length;
     const points = election.points[player.id] ?? 0;
     const remainingAuctions = election.queue.length + 1;
-    let value = 70 +
+    // Manual guidance: the going rate is ~100 points per territory.
+    let value =
+      70 +
       continentValue(state, id, player.id) * 25 +
-      activeNeighbors(state, id).filter((n) => state.territories[n].owner === player.id).length * 15 +
-      general.aggression * 10 + general.unpredictability * Math.random() * 35;
+      friendlyNeighbors * 15 +
+      general.aggression * 10 +
+      general.unpredictability * Math.random() * 35;
+    // Thrifty when the war chest runs thin relative to the docket ahead.
     if (points < remainingAuctions * 40) value *= 0.65;
     const cap = Math.min(electionBudget(state, player.id), value);
     if (election.bid + 5 <= cap) {
@@ -113,12 +138,15 @@ export function aiNextAction(state: GameState): GameAction | null {
     const owned = state.activeIds.filter((id) => state.territories[id].owner === player.id);
     const borders = owned.filter((id) => borderThreat(state, id, player.id) > 0);
     const pool = borders.length > 0 ? borders : owned;
-    const scored = pool.map((id) => ({
-      id,
-      score: borderThreat(state, id, player.id) * (0.5 + general.aggression * 0.5) +
-        continentValue(state, id, player.id) * 2 +
-        general.unpredictability * Math.random() * 6,
-    })).sort((a, b) => b.score - a.score);
+    const scored = pool
+      .map((id) => ({
+        id,
+        score:
+          borderThreat(state, id, player.id) * (0.5 + general.aggression * 0.5) +
+          continentValue(state, id, player.id) * 2 +
+          general.unpredictability * Math.random() * 6,
+      }))
+      .sort((a, b) => b.score - a.score);
     const pick = scored[0];
     return pick ? { type: "PLACE_INITIAL", territory: pick.id } : null;
   }
@@ -129,17 +157,25 @@ export function aiNextAction(state: GameState): GameAction | null {
   }
 
   if (state.phase === "reinforcement") {
+    // I-Com: honorable generals may offer the lone human commander a pact.
     const humans = state.players.filter((p) => p.isHuman && p.alive);
     if (humans.length === 1) {
       const human = humans[0];
-      if (human && !state.proposalsMade.includes(human.id) && !allianceBetween(state, player.id, human.id) &&
-        (player.grudges[human.id] ?? 0) < 0.6 && Math.random() < general.honorLevel * 0.12) {
-        const sharesBorder = state.activeIds.some((id) =>
-          state.territories[id].owner === player.id &&
-          activeNeighbors(state, id).some((n) => state.territories[n].owner === human.id),
+      if (
+        human &&
+        !state.proposalsMade.includes(human.id) &&
+        !allianceBetween(state, player.id, human.id) &&
+        (player.grudges[human.id] ?? 0) < 0.6 &&
+        Math.random() < general.honorLevel * 0.12
+      ) {
+        const sharesBorder = state.activeIds.some(
+          (id) =>
+            state.territories[id].owner === player.id &&
+            activeNeighbors(state, id).some((n) => state.territories[n].owner === human.id),
         );
         if (sharesBorder) {
-          const level: AllianceLevel = general.honorLevel > 0.8 ? (Math.random() < 0.5 ? 3 : 2) : general.honorLevel > 0.5 ? 2 : 1;
+          const level: AllianceLevel =
+            general.honorLevel > 0.8 ? (Math.random() < 0.5 ? 3 : 2) : general.honorLevel > 0.5 ? 2 : 1;
           return { type: "PROPOSE_ALLIANCE", target: human.id, level };
         }
       }
@@ -153,12 +189,15 @@ export function aiNextAction(state: GameState): GameAction | null {
       const owned = state.activeIds.filter((id) => state.territories[id].owner === player.id);
       const borders = owned.filter((id) => borderThreat(state, id, player.id) > 0);
       const pool = borders.length > 0 ? borders : owned;
-      const scored = pool.map((id) => ({
-        id,
-        score: borderThreat(state, id, player.id) * (0.5 + general.aggression * 0.5) +
-          continentValue(state, id, player.id) * 2 +
-          general.unpredictability * Math.random() * 6,
-      })).sort((a, b) => b.score - a.score);
+      const scored = pool
+        .map((id) => ({
+          id,
+          score:
+            borderThreat(state, id, player.id) * (0.5 + general.aggression * 0.5) +
+            continentValue(state, id, player.id) * 2 +
+            general.unpredictability * Math.random() * 6,
+        }))
+        .sort((a, b) => b.score - a.score);
       const pick = scored[0];
       if (pick) {
         const chunk = Math.max(1, Math.ceil(state.reinforcementsRemaining / 2));
@@ -169,7 +208,9 @@ export function aiNextAction(state: GameState): GameAction | null {
   }
 
   if (state.phase === "attack") {
-    if (Math.random() < (1 - general.aggression) * 0.25) return { type: "END_ATTACK" };
+    if (Math.random() < (1 - general.aggression) * 0.25) {
+      return { type: "END_ATTACK" };
+    }
     const attack = bestAttack(state, player.id, general);
     if (attack) {
       const allOut = attack.ratio >= 1.8 || general.riskTolerance > 0.75;

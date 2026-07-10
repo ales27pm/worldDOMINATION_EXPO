@@ -1,5 +1,10 @@
 import type { ContinentDef, ContinentId, TerritoryDef, TerritoryId } from "./types";
 
+/**
+ * World map data ported from RiskConquest MapData.swift.
+ * Coordinates are normalized (0..1) positions calibrated against the painted
+ * world-board artwork (ART.worldBoard, 3:2 aspect).
+ */
 export const CONTINENTS: Record<ContinentId, ContinentDef> = {
   northAmerica: { id: "northAmerica", name: "North America", bonus: 5, color: "#d9b167" },
   southAmerica: { id: "southAmerica", name: "South America", bonus: 2, color: "#e08f74" },
@@ -77,10 +82,14 @@ export const ALL_TERRITORIES: TerritoryDef[] = [
 ];
 
 export const TERRITORY_MAP: Record<TerritoryId, TerritoryDef> = ALL_TERRITORIES.reduce(
-  (acc, def) => { acc[def.id] = def; return acc; },
+  (acc, def) => {
+    acc[def.id] = def;
+    return acc;
+  },
   {} as Record<TerritoryId, TerritoryDef>,
 );
 
+/** Active territory defs for a given configuration, with neighbor lists filtered to active ids. */
 export function activeTerritories(includeExtra: boolean): TerritoryDef[] {
   const active = ALL_TERRITORIES.filter((def) => includeExtra || !def.isExtra);
   const activeIds = new Set<TerritoryId>(active.map((def) => def.id));
@@ -90,9 +99,15 @@ export function activeTerritories(includeExtra: boolean): TerritoryDef[] {
   }));
 }
 
+/** Territories grouped by continent for the active set. */
 export function continentTerritories(includeExtra: boolean): Record<ContinentId, TerritoryId[]> {
   const groups: Record<ContinentId, TerritoryId[]> = {
-    northAmerica: [], southAmerica: [], europe: [], africa: [], asia: [], australia: [],
+    northAmerica: [],
+    southAmerica: [],
+    europe: [],
+    africa: [],
+    asia: [],
+    australia: [],
   };
   for (const def of activeTerritories(includeExtra)) {
     groups[def.continent].push(def.id);

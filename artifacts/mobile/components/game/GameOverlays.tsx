@@ -6,6 +6,7 @@ import { TERRITORY_MAP } from '@/game/mapData';
 import { ALLIANCE_LEVEL_INFO } from '@/game/types';
 import type { AllianceLevel, GameAction, GameState } from '@/game/types';
 import { missionText } from '@/game/missions';
+import { Fireworks } from './Fireworks';
 
 // ─── Handoff Overlay ──────────────────────────────────────────────────────────
 export function HandoffOverlay({ game, dispatch }: { game: GameState; dispatch: (a: GameAction) => void }) {
@@ -132,6 +133,7 @@ export function VictoryOverlay({ game, onExit }: { game: GameState; onExit: () =
   return (
     <Modal visible transparent animationType="fade">
       <View style={styles.backdrop}>
+        {playerWon && <Fireworks />}
         <View style={[styles.sheet, styles.victorySheet]}>
           <Text style={[styles.victoryResult, playerWon ? styles.victory : styles.defeat]}>
             {playerWon ? '⚔ VICTORY' : '✕ DEFEAT'}

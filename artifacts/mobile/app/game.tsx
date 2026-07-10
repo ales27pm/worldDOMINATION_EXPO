@@ -21,6 +21,7 @@ import {
   ProposalOverlay,
   VictoryOverlay,
 } from '@/components/game/GameOverlays';
+import { BattleView } from '@/components/game/BattleView';
 
 export default function GameScreen() {
   const router = useRouter();
@@ -332,6 +333,7 @@ export default function GameScreen() {
       )}
 
       {/* Modals */}
+      <BattleView game={game} />
       <HandoffOverlay game={game} dispatch={dispatch} />
       <OccupyOverlay game={game} dispatch={dispatch} />
       <ProposalOverlay game={game} dispatch={dispatch} />

@@ -2,6 +2,12 @@ import { totalTroops } from "./analysis";
 import { GENERALS } from "./generals";
 import type { Allocation, CardRule, GameSetup, GameState, GeneralId, Objective, PlayerSetup } from "./types";
 
+/**
+ * The RISK II Tournament (manual, Chapter 9): 16 campaigns played in
+ * sequence, escalating in opponent count, general quality and rule
+ * variations. Early games are of a classic flavour; later games introduce
+ * elections, capitals, the extended map and the top-drawer generals.
+ */
 export interface TournamentGameDef {
   index: number;
   title: string;
@@ -33,10 +39,12 @@ export const TOURNAMENT_GAMES: TournamentGameDef[] = [
 
 export const TOURNAMENT_LENGTH = TOURNAMENT_GAMES.length;
 
+/** Points for a win + a kill per opponent + most troops (manual points system). */
 export function tournamentMaxPoints(def: TournamentGameDef): number {
   return 150 + def.opponents.length * 20 + 30;
 }
 
+/** Build a full GameSetup for a tournament battle. */
 export function buildTournamentSetup(def: TournamentGameDef, humanName: string): GameSetup {
   const players: PlayerSetup[] = [
     { name: humanName.trim() === "" ? "You" : humanName.trim(), colorIdx: 0, isHuman: true, generalId: null },
@@ -57,12 +65,15 @@ export function buildTournamentSetup(def: TournamentGameDef, humanName: string):
   };
 }
 
+/** Outcome of a tournament battle, scored per the manual's points system. */
 export interface TournamentResult {
+  /** The human was destroyed — 0 points and the tournament ends. */
   eliminated: boolean;
   won: boolean;
   kills: number;
   mostTroops: boolean;
   points: number;
+  /** Win, or defeat one+ opponents and survive to the end, to progress. */
   progressed: boolean;
 }
 
@@ -74,7 +85,10 @@ export function tournamentResult(state: GameState): TournamentResult {
   const kills = state.players.filter((p) => p.killedBy === human.id).length;
   const won = state.winner === human.id;
   const humanTroops = totalTroops(state, human.id);
-  const rivalBest = Math.max(0, ...state.players.filter((p) => p.alive && p.id !== human.id).map((p) => totalTroops(state, p.id)));
+  const rivalBest = Math.max(
+    0,
+    ...state.players.filter((p) => p.alive && p.id !== human.id).map((p) => totalTroops(state, p.id)),
+  );
   const mostTroops = humanTroops >= rivalBest;
   const points = (won ? 150 : 0) + kills * 20 + (mostTroops ? 30 : 0);
   return { eliminated: false, won, kills, mostTroops, points, progressed: won || kills >= 1 };

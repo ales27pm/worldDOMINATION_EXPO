@@ -1,40 +1,54 @@
 ---
 name: World Domination mobile port
-description: Architecture decisions for the Risk-like game ported to React Native Expo at artifacts/mobile
+description: Architecture decisions, sync strategy, and feature status for the Expo mobile port of worldDOMINATION_2026.
 ---
 
-## Structure
+## Location
+`artifacts/mobile/` — Expo React Native app (registered artifact, slug `mobile`).
 
-- `game/` — pure TypeScript game logic (engine, ai, types, mapData, mapShapes, etc.) — no React deps
-- `context/GameContext.tsx` — React state via useReducer wrapping gameReducer, AsyncStorage auto-save
-- `app/` — expo-router Stack screens: index, setup, game, records (tabs/ is dead, redirects to /)
-- `components/game/` — GameMap (SVG map), GamePanel (bottom HUD), GameOverlays (modals), etc.
+## Game logic files
+All live in `artifacts/mobile/game/`. Always sync from the web repo when updating:
+```
+https://raw.githubusercontent.com/ales27pm/worldDOMINATION_2026/main/web/src/game/<file>
+```
+Files to sync (pure TS, no DOM deps): `types.ts`, `engine.ts`, `ai.ts`, `mapData.ts`, `mapShapes.ts`, `tournament.ts`, `camera.ts`, `analysis.ts`, `cards.ts`, `dice.ts`, `generals.ts`, `missions.ts`, `pieces.ts`.
 
-## Key decisions
+**Why:** Web repo is the upstream source of truth; mobile port is a downstream consumer.
 
-**Map rendering**: react-native-svg (v15.12.1) with all 48 territory SVG paths at 1536×1024 viewBox. Map fits to available height and is horizontally scrollable via ScrollView. Territory taps use SVG Path `onPress`.
+**`battleViews.ts` is the exception** — written by hand for mobile because the web version uses `new Image()` (DOM). Mobile version just exports `battleViewUrl(id)` using `assetUrl()`.
 
-**No @react-native-community/slider**: Not installed. OccupyOverlay uses a +/− stepper instead.
+## Asset layer
+- Object storage bucket: `replit-objstore-b0b71f05-e654-437f-8e5d-5a90d34315e0`
+- Public asset helper: `artifacts/mobile/lib/assetUrl.ts` → `assetUrl(filePath)` → `${EXPO_PUBLIC_API_BASE_URL}/api/storage/public-objects/${filePath}`
+- API server route: `GET /api/storage/public-objects/*filePath` (public, no auth)
+- Assets in bucket: `public/battle-views/*.webp` (48 territories), `public/risk/fireworks/f00–f20.png`, `public/risk/sfx/*.mp3` (20 files), `public/risk/dice/red_1–6.png` + `gold_1–6.png`
 
-**Color scheme**: Dark Napoleonic military theme. `constants/colors.ts` exports named `Colors` (not default). The hook `useColors.ts` was rewritten to simply return Colors (old hook expected nested light/dark structure).
+## Sound system
+`artifacts/mobile/lib/sfx.ts` — expo-av wrapper.
+- `playSfx(name, { volume?, maxMs? }): Promise<() => void>`
+- `playRandomSfx(names[], options): Promise<() => void>`
+- **expo-av deprecation:** Will be removed in SDK 54; migrate to `expo-audio` when upgrading SDK. Non-blocking for now.
 
-**AI loop**: `useEffect` + `setTimeout` in `app/game.tsx`. Fires when `!isHumanTurn && !awaitingHandoff && !pendingProposal`. Delay: 100ms for initial phases, 180ms for main game phases.
+## Components added (this session)
+- `components/game/RiskDie.tsx` — authentic RISK II die sprites from object storage, tier tinting via `tintColor`
+- `components/game/BattleView.tsx` — cinematic battle overlay (Modal); watches `game.lastBattle`, fires for human battles only. Press-to-roll → dice + SFX + auto-dismiss (3.2s).
+- `components/game/Fireworks.tsx` — 21-frame sprite animation, 5 staggered bursts, loops. Added to `VictoryOverlay` when `playerWon`.
+- `components/game/BattleReport.tsx` — inline card; updated to use `RiskDie` instead of colored boxes.
 
-**DispatchLog**: Must pass `visible={logOpen}` — the `Modal` inside uses this prop. Early versions accidentally left modal always open (critical bug, now fixed).
+## textShadow style API
+React Native uses `textShadow: "0px 2px 6px rgba(0,0,0,0.9)"` (string shorthand). The old `textShadowColor`/`textShadowOffset`/`textShadowRadius` props are deprecated and generate warnings.
 
-**Adjacency validation**: `ATTACK` and `FORTIFY` in engine.ts both validate adjacency against TERRITORY_MAP[from].neighbors filtered by activeIds.
+## State shape (engine.ts as of Jul 2026)
+`GameState` now includes:
+- `history: TurnSnapshot[]` — per-turn territory/troop census (max 300), initialized to `[]`
+- `battlesFought: number`
+- `winReason: string | null`
+- `winner: number | null`
+`normalizeState()` handles backward-compat for saves missing `history`.
 
-**Why**: Engine-level validation ensures rules integrity even if UI sends a bad dispatch.
-
-**PLAYER_COLORS**: Array of 8 {hex, name} objects indexed by colorIdx. Used by engine to set player.color.
-
-**Tabs directory**: `app/(tabs)/` files redirect to `/` — kept to avoid build errors but not used.
-
-## Packages actually used from devDeps
-
-- react-native-svg ~15.12.1 ✓
-- @react-native-async-storage/async-storage 2.2.0 ✓
-- expo-linear-gradient ~15.0.8 ✓
-- react-native-gesture-handler ~2.28.0 (installed, not used in map — using ScrollView instead)
-- react-native-reanimated ~4.1.1 (installed, not used yet)
-- @expo-google-fonts/inter ^0.4.0 ✓
+## Outstanding gaps (not yet ported)
+1. Map view modes (board/ownership/threats/strength/empire heat-map) — web `WorldMap.tsx`
+2. Camera/pan-pinch-zoom — web `MapViewport.tsx`; mobile still uses ScrollView
+3. Tournament screen UI — logic exists (`tournament.ts`), no mobile screen yet
+4. Premium/paywall — RevenueCat mobile SDK (`react-native-purchases`) not integrated
+5. SQLite persistence — web uses sql.js+IndexedDB; mobile still on AsyncStorage
