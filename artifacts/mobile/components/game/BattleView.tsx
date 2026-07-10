@@ -219,7 +219,6 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_700Bold",
     fontSize: 26,
     letterSpacing: 3,
-    textShadow: "0px 2px 6px rgba(0,0,0,0.9)",
   },
   battleLine: {
     color: "#ccc",
@@ -285,7 +284,6 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_700Bold",
     fontSize: 20,
     letterSpacing: 4,
-    textShadow: "0px 2px 8px rgba(0,0,0,0.95)",
   },
   conquered: { color: Colors.gold },
   repelled: { color: Colors.textMuted },

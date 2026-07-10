@@ -68,6 +68,11 @@ export default function HomeScreen() {
           )}
 
           <MenuButton
+            label="Tournament"
+            onPress={() => router.push('/tournament')}
+          />
+
+          <MenuButton
             label="Hall of Records"
             onPress={() => router.push('/records')}
           />
@@ -130,8 +135,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     letterSpacing: 4,
     lineHeight: 56,
-    textShadowColor: Colors.gold,
-    textShadowRadius: 12,
+    textShadow: `0 0 12px ${Colors.gold}`,
   },
   divider: {
     width: 80,

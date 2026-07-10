@@ -3,17 +3,20 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useGame } from '@/context/GameContext';
+import { useTournament } from '@/context/TournamentContext';
 import { aiNextAction } from '@/game/ai';
 import { allianceBetween } from '@/game/analysis';
 import { electionBudget } from '@/game/engine';
 import { TERRITORY_MAP } from '@/game/mapData';
+import { tournamentResult } from '@/game/tournament';
 import { Colors } from '@/constants/colors';
 import type { GameState, TerritoryId } from '@/game/types';
-import GameMap from '@/components/game/GameMap';
+import GameMap, { MAP_VIEW_LABELS, MAP_VIEW_MODES, type MapViewMode } from '@/components/game/GameMap';
 import GamePanel from '@/components/game/GamePanel';
 import PlayerRoster from '@/components/game/PlayerRoster';
 import BattleReportCard from '@/components/game/BattleReport';
 import CardHand from '@/components/game/CardHand';
+import { BattleView } from '@/components/game/BattleView';
 import {
   DispatchLog,
   HandoffOverlay,
@@ -21,12 +24,11 @@ import {
   ProposalOverlay,
   VictoryOverlay,
 } from '@/components/game/GameOverlays';
-import { BattleView } from '@/components/game/BattleView';
 
 export default function GameScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const { game, dispatch, abandonGame } = useGame();
+  const { recordResult } = useTournament();
 
   const [selected, setSelected] = useState<TerritoryId | null>(null);
   const [deployAmount, setDeployAmount] = useState(1);
@@ -34,6 +36,7 @@ export default function GameScreen() {
   const [cardsOpen, setCardsOpen] = useState(false);
   const [rosterOpen, setRosterOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<MapViewMode>('board');
 
   // Redirect if no game
   useEffect(() => {
@@ -45,13 +48,13 @@ export default function GameScreen() {
   const player = game.players[game.currentPlayer];
   const isHumanTurn = player?.isHuman ?? false;
   const isHumanActive = isHumanTurn && !game.awaitingHandoff && !game.pendingProposal;
+  const isTournamentGame = game.setup.tournamentGame !== undefined;
 
   // ── AI Loop ────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!game || game.phase === 'gameOver') return;
     if (isHumanTurn || game.awaitingHandoff || game.pendingProposal) return;
     if (game.pendingOccupy) {
-      // AI handles occupy immediately
       const timer = setTimeout(() => {
         const action = aiNextAction(game);
         if (action) dispatch(action);
@@ -104,29 +107,21 @@ export default function GameScreen() {
       }
     } else if (phase === 'attack') {
       if (!selected) {
-        // Show attackable source territories
         for (const id of game.activeIds) {
           const ter = game.territories[id];
           if (ter.owner !== player.id || ter.armies < 2) continue;
-          const neighbors = game.activeIds.filter(
-            (n) => game.territories[n].owner !== player.id,
-          );
-          // Show if has armies (neighbor check is approximate for performance)
           if (ter.armies >= 2) inter.add(id);
         }
       } else {
-        // Show this territory as interactive
         const selTer = game.territories[selected];
         if (selTer?.owner === player.id && selTer.armies >= 2) {
           inter.add(selected);
-          // Show attackable neighbors as targets
           const def = TERRITORY_MAP[selected];
           if (def) {
             for (const n of def.neighbors) {
               if (!activeSet.has(n)) continue;
               const nt = game.territories[n as TerritoryId];
               if (nt?.owner !== player.id) {
-                // Check alliance
                 const alliance = allianceBetween(game, player.id, nt.owner);
                 if (!alliance || alliance.level < 2) {
                   tgts.add(n as TerritoryId);
@@ -138,7 +133,6 @@ export default function GameScreen() {
       }
     } else if (phase === 'fortify') {
       if (!selected) {
-        // Show territories with armies to move
         for (const id of game.activeIds) {
           const ter = game.territories[id];
           if (ter.owner === player.id && ter.armies >= 2) inter.add(id);
@@ -180,12 +174,10 @@ export default function GameScreen() {
     }
     if (phase === 'attack') {
       if (selected && targets.has(id)) {
-        // Attack!
         dispatch({ type: 'ATTACK', from: selected, to: id, allOut });
         setSelected(null);
         return;
       }
-      // Select source
       if (ter.owner === player?.id && ter.armies >= 2) {
         setSelected(id === selected ? null : id);
         return;
@@ -203,21 +195,36 @@ export default function GameScreen() {
         return;
       }
     }
-    if ((phase === 'reinforcement') && ter.owner === player?.id) {
+    if (phase === 'reinforcement' && ter.owner === player?.id) {
       setSelected(id === selected ? null : id);
       return;
     }
-    // Deselect on empty tap
     if (id !== selected) setSelected(null);
   }, [game, selected, targets, allOut, deployAmount, isHumanActive, dispatch, player]);
 
-  // ── Victory exit ───────────────────────────────────────────────────────────
+  // ── Victory / game-over exit ───────────────────────────────────────────────
   const handleVictoryExit = useCallback(async () => {
-    await abandonGame();
-    router.replace('/');
-  }, [abandonGame, router]);
+    if (isTournamentGame && game.phase === 'gameOver') {
+      // Score this tournament battle, then return to tournament screen
+      const result = tournamentResult(game);
+      await abandonGame();
+      recordResult(result);
+      router.replace('/tournament');
+    } else {
+      await abandonGame();
+      router.replace('/');
+    }
+  }, [isTournamentGame, game, abandonGame, recordResult, router]);
 
-  // ── Election UI (simple) ───────────────────────────────────────────────────
+  // ── View mode cycle ────────────────────────────────────────────────────────
+  const cycleViewMode = useCallback(() => {
+    setViewMode((m) => {
+      const idx = MAP_VIEW_MODES.indexOf(m);
+      return MAP_VIEW_MODES[(idx + 1) % MAP_VIEW_MODES.length];
+    });
+  }, []);
+
+  // ── Election UI ────────────────────────────────────────────────────────────
   const renderElectionPanel = () => {
     const election = game.election;
     if (!election || game.phase !== 'election') return null;
@@ -253,28 +260,31 @@ export default function GameScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Top safe area + mini status */}
+      {/* Top bar */}
       <SafeAreaView edges={['top']} style={styles.topBar}>
         <View style={styles.topRow}>
           <Pressable
             onPress={() => {
               Alert.alert('Exit Campaign', 'Return to main menu? Progress is auto-saved.', [
                 { text: 'Cancel', style: 'cancel' },
-                { text: 'Exit', style: 'destructive', onPress: () => router.replace('/') },
+                { text: 'Exit', style: 'destructive', onPress: () => router.replace(isTournamentGame ? '/tournament' : '/') },
               ]);
             }}
             style={styles.exitBtn}
           >
-            <Text style={styles.exitText}>← Menu</Text>
+            <Text style={styles.exitText}>← {isTournamentGame ? 'Tournament' : 'Menu'}</Text>
           </Pressable>
+
           <View style={styles.turnInfo}>
             <Text style={styles.turnText}>Turn {game.turn}</Text>
             <Text style={styles.phaseText}>{phaseLabel(game.phase)}</Text>
           </View>
-          <View style={styles.playerCount}>
-            <Text style={styles.aliveText}>
-              {game.players.filter((p) => p.alive).length}/{game.players.length} Alive
-            </Text>
+
+          <View style={styles.topRight}>
+            {/* View mode toggle */}
+            <Pressable onPress={cycleViewMode} style={styles.viewModeBtn}>
+              <Text style={styles.viewModeText}>{MAP_VIEW_LABELS[viewMode].toUpperCase()}</Text>
+            </Pressable>
           </View>
         </View>
       </SafeAreaView>
@@ -286,6 +296,7 @@ export default function GameScreen() {
           selected={selected}
           targets={targets}
           interactive={interactive}
+          viewMode={viewMode}
           onTerritoryTap={handleTerritoryTap}
         />
       </View>
@@ -319,7 +330,7 @@ export default function GameScreen() {
         </SafeAreaView>
       )}
 
-      {/* Roster overlay (side panel) */}
+      {/* Roster overlay */}
       {rosterOpen && (
         <View style={styles.rosterOverlay}>
           <View style={styles.rosterHeader}>
@@ -332,8 +343,10 @@ export default function GameScreen() {
         </View>
       )}
 
-      {/* Modals */}
+      {/* Cinematic battle overlay */}
       <BattleView game={game} />
+
+      {/* Modals */}
       <HandoffOverlay game={game} dispatch={dispatch} />
       <OccupyOverlay game={game} dispatch={dispatch} />
       <ProposalOverlay game={game} dispatch={dispatch} />
@@ -378,8 +391,13 @@ const styles = StyleSheet.create({
   turnInfo: { flex: 1, alignItems: 'center', gap: 2 },
   turnText: { color: Colors.text, fontFamily: 'Inter_700Bold', fontSize: 14 },
   phaseText: { color: Colors.goldDim, fontFamily: 'Inter_500Medium', fontSize: 10, letterSpacing: 2 },
-  playerCount: { alignItems: 'flex-end' },
-  aliveText: { color: Colors.textMuted, fontFamily: 'Inter_400Regular', fontSize: 12 },
+  topRight: { alignItems: 'flex-end', gap: 2 },
+  viewModeBtn: {
+    borderWidth: 1, borderColor: Colors.border,
+    paddingHorizontal: 8, paddingVertical: 3,
+    backgroundColor: Colors.bgCard,
+  },
+  viewModeText: { color: Colors.goldDim, fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 2 },
   mapContainer: { flex: 1 },
   battleContainer: { paddingHorizontal: 12, paddingVertical: 4 },
   bottomBar: { backgroundColor: Colors.bgCard, borderTopWidth: 1, borderTopColor: Colors.border },
