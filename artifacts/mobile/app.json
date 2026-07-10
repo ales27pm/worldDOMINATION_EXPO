@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "World Domination",
-    "slug": "mobile",
+    "name": "worldDOMINATION",
+    "slug": "worlddomination",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "mobile",
+    "scheme": "worlddomination",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -14,9 +14,12 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": false,
+      "bundleIdentifier": "com.worlddomination.app"
     },
-    "android": {},
+    "android": {
+      "package": "com.worlddomination.app"
+    },
     "web": {
       "favicon": "./assets/images/icon.png"
     },
