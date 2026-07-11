@@ -15,7 +15,7 @@ import { TERRITORY_MAP } from "@/game/mapData";
 import type { BattleReport, GameState } from "@/game/types";
 import { RiskDie } from "./RiskDie";
 
-const RESULT_HOLD_MS = 3200;
+const RESULT_HOLD_MS = 3600;
 const { width: SW, height: SH } = Dimensions.get("window");
 
 interface Props {

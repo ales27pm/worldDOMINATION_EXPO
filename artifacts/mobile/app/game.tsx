@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useGame } from '@/context/GameContext';
 import { useTournament } from '@/context/TournamentContext';
 import { aiNextAction } from '@/game/ai';
@@ -13,8 +13,9 @@ import { Colors } from '@/constants/colors';
 import type { GameAction, GameState, TerritoryId } from '@/game/types';
 import { preloadBattleViews } from '@/game/battleViews';
 import { playActionSound, useGameSounds } from '@/hooks/useGameSounds';
-import { toggleSfxMuted, useSfxMuted } from '@/lib/sfx';
 import GameMap, { MAP_VIEW_LABELS, MAP_VIEW_MODES, type MapViewMode } from '@/components/game/GameMap';
+import { TopBar } from '@/components/game/TopBar';
+import { FieldPanel, SectionHeader } from '@/components/game/FieldPanel';
 import GamePanel from '@/components/game/GamePanel';
 import PlayerRoster from '@/components/game/PlayerRoster';
 import BattleReportCard from '@/components/game/BattleReport';
@@ -30,7 +31,38 @@ import {
 
 export default function GameScreen() {
   const router = useRouter();
-  const { game, dispatch: rawDispatch, abandonGame } = useGame();
+  const { game, startGame } = useGame();
+  const { autostart } = useLocalSearchParams<{ autostart?: string }>();
+
+  // Redirect if no game (dev builds can auto-start a demo campaign for previews)
+  useEffect(() => {
+    if (game) return;
+    if (__DEV__ && autostart) {
+      startGame({
+        players: [
+          { name: 'Napoleon', colorIdx: 0, isHuman: true, generalId: null },
+          { name: 'Wellington', colorIdx: 1, isHuman: false, generalId: null },
+          { name: 'Kutuzov', colorIdx: 2, isHuman: false, generalId: null },
+          { name: 'Blücher', colorIdx: 3, isHuman: false, generalId: null },
+        ],
+        objective: 'domination100',
+        useExtraTerritories: true,
+        cardRule: 'ascending',
+        allocation: 'random',
+      });
+      return;
+    }
+    router.replace('/');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game, autostart]);
+
+  if (!game) return null;
+  return <CampaignScreen game={game} />;
+}
+
+function CampaignScreen({ game }: { game: GameState }) {
+  const router = useRouter();
+  const { dispatch: rawDispatch, abandonGame } = useGame();
   const { recordResult } = useTournament();
 
   // Every human order gets its RISK II sound cue before it hits the engine.
@@ -41,7 +73,6 @@ export default function GameScreen() {
     },
     [rawDispatch],
   );
-  const sfxMuted = useSfxMuted();
 
   // State-transition sound director: battles, proposals, handoffs, victory.
   // Battle views are always enabled on mobile.
@@ -54,13 +85,6 @@ export default function GameScreen() {
   const [rosterOpen, setRosterOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
   const [viewMode, setViewMode] = useState<MapViewMode>('board');
-
-  // Redirect if no game
-  useEffect(() => {
-    if (!game) router.replace('/');
-  }, [game]);
-
-  if (!game) return null;
 
   const player = game.players[game.currentPlayer];
   const isHumanTurn = player?.isHuman ?? false;
@@ -256,8 +280,8 @@ export default function GameScreen() {
     const budget = electionBudget(game, player.id);
     const points = election.points[player.id] ?? 0;
     return (
-      <View style={styles.electionPanel}>
-        <Text style={styles.electionTitle}>AUCTION: {tName}</Text>
+      <FieldPanel style={styles.electionPanel}>
+        <SectionHeader index={1} title={`Auction — ${tName}`} />
         <Text style={styles.electionBid}>Current bid: {election.bid}</Text>
         <Text style={styles.electionPoints}>Your points: {points} (budget: {budget})</Text>
         <View style={styles.electionBtns}>
@@ -277,49 +301,14 @@ export default function GameScreen() {
             </Pressable>
           )}
         </View>
-      </View>
+      </FieldPanel>
     );
   };
 
   return (
     <View style={styles.container}>
-      {/* Top bar */}
-      <SafeAreaView edges={['top']} style={styles.topBar}>
-        <View style={styles.topRow}>
-          <Pressable
-            onPress={() => {
-              Alert.alert('Exit Campaign', 'Return to main menu? Progress is auto-saved.', [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Exit', style: 'destructive', onPress: () => router.replace(isTournamentGame ? '/tournament' : '/') },
-              ]);
-            }}
-            style={styles.exitBtn}
-          >
-            <Text style={styles.exitText}>← {isTournamentGame ? 'Tournament' : 'Menu'}</Text>
-          </Pressable>
-
-          <View style={styles.turnInfo}>
-            <Text style={styles.turnText}>Turn {game.turn}</Text>
-            <Text style={styles.phaseText}>{phaseLabel(game.phase)}</Text>
-          </View>
-
-          <View style={styles.topRight}>
-            {/* Global sound toggle (persisted) */}
-            <Pressable onPress={toggleSfxMuted} style={styles.viewModeBtn}>
-              <Text style={[styles.viewModeText, sfxMuted && { opacity: 0.55 }]}>
-                {sfxMuted ? 'SFX ✕' : 'SFX ♪'}
-              </Text>
-            </Pressable>
-            {/* View mode toggle */}
-            <Pressable onPress={cycleViewMode} style={styles.viewModeBtn}>
-              <Text style={styles.viewModeText}>{MAP_VIEW_LABELS[viewMode].toUpperCase()}</Text>
-            </Pressable>
-          </View>
-        </View>
-      </SafeAreaView>
-
-      {/* MAP */}
-      <View style={styles.mapContainer}>
+      {/* MAP — full bleed behind the floating chrome */}
+      <View style={StyleSheet.absoluteFillObject}>
         <GameMap
           game={game}
           selected={selected}
@@ -330,20 +319,41 @@ export default function GameScreen() {
         />
       </View>
 
-      {/* Battle report (inline, shown above panel) */}
-      {game.lastBattle && game.phase === 'attack' && (
-        <View style={styles.battleContainer}>
-          <BattleReportCard battle={game.lastBattle} game={game} />
+      {/* Floating imperial command bar */}
+      <SafeAreaView edges={['top']} style={styles.topBar} pointerEvents="box-none">
+        <TopBar
+          game={game}
+          onExit={() => {
+            Alert.alert('Exit Campaign', 'Return to the hall? Progress is auto-saved.', [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Exit', style: 'destructive', onPress: () => router.replace(isTournamentGame ? '/tournament' : '/') },
+            ]);
+          }}
+        />
+        {/* View-mode rail (web's Layers list) */}
+        <View style={styles.viewRail} pointerEvents="box-none">
+          <Pressable onPress={cycleViewMode} style={styles.viewModeBtn}>
+            <Text style={styles.viewModeText}>{MAP_VIEW_LABELS[viewMode].toUpperCase()}</Text>
+          </Pressable>
         </View>
-      )}
+      </SafeAreaView>
 
-      {/* Election panel */}
-      {game.phase === 'election' && isHumanActive && renderElectionPanel()}
+      {/* Floating bottom chrome */}
+      <SafeAreaView edges={['bottom']} style={styles.bottomChrome} pointerEvents="box-none">
+        {/* Battle report (inline, shown above panel) */}
+        {game.lastBattle && game.phase === 'attack' && (
+          <View style={styles.battleContainer}>
+            <BattleReportCard battle={game.lastBattle} game={game} />
+          </View>
+        )}
 
-      {/* Bottom action panel */}
-      {game.phase !== 'gameOver' && (
-        <SafeAreaView edges={['bottom']} style={styles.bottomBar}>
-          <GamePanel
+        {/* Election panel */}
+        {game.phase === 'election' && isHumanActive && renderElectionPanel()}
+
+        {/* Bottom action panel */}
+        {game.phase !== 'gameOver' && (
+          <View style={styles.bottomBar}>
+            <GamePanel
             game={game}
             selected={selected}
             targets={targets}
@@ -354,10 +364,11 @@ export default function GameScreen() {
             dispatch={dispatch}
             onOpenCards={() => setCardsOpen(true)}
             onOpenRoster={() => setRosterOpen(true)}
-            onOpenLog={() => setLogOpen(true)}
-          />
-        </SafeAreaView>
-      )}
+              onOpenLog={() => setLogOpen(true)}
+            />
+          </View>
+        )}
+      </SafeAreaView>
 
       {/* Roster overlay */}
       {rosterOpen && (
@@ -397,53 +408,32 @@ export default function GameScreen() {
   );
 }
 
-function phaseLabel(phase: string): string {
-  switch (phase) {
-    case 'territoryGrab': return 'CLAIMING';
-    case 'election': return 'ELECTION';
-    case 'initialDeploy': return 'INITIAL DEPLOY';
-    case 'chooseCapital': return 'CHOOSE CAPITAL';
-    case 'reinforcement': return 'REINFORCE';
-    case 'attack': return 'ATTACK';
-    case 'fortify': return 'FORTIFY';
-    case 'gameOver': return 'GAME OVER';
-    default: return phase.toUpperCase();
-  }
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
-  topBar: { backgroundColor: Colors.bgCard, borderBottomWidth: 1, borderBottomColor: Colors.border },
-  topRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, gap: 8 },
-  exitBtn: { padding: 4 },
-  exitText: { color: Colors.gold, fontFamily: 'Alegreya_500Medium', fontSize: 13 },
-  turnInfo: { flex: 1, alignItems: 'center', gap: 2 },
-  turnText: { color: Colors.text, fontFamily: 'Alegreya_700Bold', fontSize: 14 },
-  phaseText: { color: Colors.goldDim, fontFamily: 'Alegreya_500Medium', fontSize: 10, letterSpacing: 2 },
-  topRight: { alignItems: 'flex-end', gap: 2 },
+  topBar: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 },
+  viewRail: { alignItems: 'flex-start', paddingLeft: 8, paddingTop: 8 },
   viewModeBtn: {
-    borderWidth: 1, borderColor: Colors.border,
-    paddingHorizontal: 8, paddingVertical: 3,
-    backgroundColor: Colors.bgCard,
+    borderWidth: 1, borderColor: 'rgba(222,190,115,0.4)',
+    paddingHorizontal: 8, paddingVertical: 4,
+    backgroundColor: 'rgba(21,13,9,0.62)',
   },
-  viewModeText: { color: Colors.goldDim, fontFamily: 'Alegreya_600SemiBold', fontSize: 9, letterSpacing: 2 },
-  mapContainer: { flex: 1 },
+  viewModeText: { color: Colors.gold, fontFamily: 'Alegreya_600SemiBold', fontSize: 9, letterSpacing: 2 },
+  bottomChrome: { position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 10 },
   battleContainer: { paddingHorizontal: 12, paddingVertical: 4 },
-  bottomBar: { backgroundColor: Colors.bgCard, borderTopWidth: 1, borderTopColor: Colors.border },
-
-  // Election
-  electionPanel: {
-    backgroundColor: Colors.bgCard, borderTopWidth: 1, borderTopColor: Colors.goldDim,
-    padding: 12, gap: 6,
+  bottomBar: {
+    backgroundColor: 'rgba(37,26,19,0.94)',
+    borderTopWidth: 1, borderTopColor: 'rgba(222,190,115,0.28)',
   },
-  electionTitle: { color: Colors.gold, fontFamily: 'Alegreya_700Bold', fontSize: 13, letterSpacing: 2 },
-  electionBid: { color: Colors.text, fontFamily: 'Alegreya_500Medium', fontSize: 14 },
-  electionPoints: { color: Colors.textMuted, fontFamily: 'Alegreya_400Regular', fontSize: 12 },
+
+  // Election (parchment field panel)
+  electionPanel: { marginHorizontal: 10, marginBottom: 8 },
+  electionBid: { color: Colors.ink, fontFamily: 'Alegreya_500Medium', fontSize: 14 },
+  electionPoints: { color: Colors.inkMuted, fontFamily: 'Alegreya_400Regular', fontSize: 12, marginBottom: 8 },
   electionBtns: { flexDirection: 'row', gap: 8 },
-  bidBtn: { backgroundColor: Colors.gold, paddingVertical: 8, paddingHorizontal: 16 },
-  bidBtnText: { color: Colors.bg, fontFamily: 'Alegreya_700Bold', fontSize: 13 },
-  passBtn: { borderWidth: 1, borderColor: Colors.border, paddingVertical: 8, paddingHorizontal: 16 },
-  passBtnText: { color: Colors.textMuted, fontFamily: 'Alegreya_500Medium', fontSize: 13 },
+  bidBtn: { backgroundColor: Colors.crimson, paddingVertical: 8, paddingHorizontal: 16 },
+  bidBtnText: { color: Colors.primaryFg, fontFamily: 'Alegreya_700Bold', fontSize: 13, letterSpacing: 1 },
+  passBtn: { borderWidth: 1, borderColor: Colors.parchmentBorder, paddingVertical: 8, paddingHorizontal: 16 },
+  passBtnText: { color: Colors.inkMuted, fontFamily: 'Alegreya_500Medium', fontSize: 13 },
 
   // Roster overlay
   rosterOverlay: {

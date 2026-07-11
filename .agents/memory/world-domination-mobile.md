@@ -39,26 +39,17 @@ Files to sync (pure TS, no DOM deps): `types.ts`, `engine.ts`, `ai.ts`, `mapData
 - `components/game/BattleReport.tsx` — inline card; uses `RiskDie` for dice.
 - `components/game/GameMap.tsx` — complete rewrite with pan/pinch camera + view modes (see below).
 
-## GameMap.tsx architecture (pan/pinch camera)
+## Map stack architecture (mirrors web WorldMap/MapViewport/PieceSprite split)
 
-**Camera model:** maintains `(cx, cy)` — the SVG coordinate shown at the screen center — and `scale` (px per SVG unit).
+- `GameMap.tsx` is a thin composition: `MapViewport` (camera rig) wrapping `WorldBoard` (full 1536×1024 board render). `PieceSprite.tsx` holds `MAP_PIECE_BOX` + `MapPiece`/`PieceIcon`.
+- **Camera:** `game/camera.ts` is byte-identical to web. MapViewport keeps current+target `{cx,cy,vw}` in reanimated shared values; a `useFrameCallback` glides with the web ease `k = 1 − e^(−7.5·dt)`. Auto mode follows `cameraForAttention(computeAttention(game, selected))`; drag(>7px)/pinch switch to manual; `autoKey` (phase|player|occupy|handoff) re-engages auto; double-tap zooms 2.4× or re-engages auto when deep; control cluster = Auto / ±1.45× / Full.
+- Board transform: `translateX = (viewW − MAP_W)/2 + s·(MAP_W/2 − cx)` (same for Y), `s = viewW/vw`. Viewport measures itself with onLayout (works full-bleed under floating chrome).
+- **Tap detection:** point-in-polygon against `TERRITORY_PATHS` (subpaths split on 'M', even-odd test, bbox pre-reject) with nearest-centre fallback (~30 board-scale units) for taps on figures overhanging small shapes. Single/double tap via `Gesture.Exclusive(doubleTap, singleTap)`.
+- **Piece tinting:** white-plastic sprite RNImage + same sprite with `tintColor` **prop** (not style — style.tintColor is deprecated on web) at 0.55 opacity ≈ web's feColorMatrix channel multiply.
 
-**Animated transform math** (translateX/Y applied before scale in RN; scale pivots from element center):
-```
-translateX = (AVAIL_W - SHAPES_W)/2 + scale*(SHAPES_W/2 - cx)
-translateY = (AVAIL_H - SHAPES_H)/2 + scale*(SHAPES_H/2 - cy)
-```
-- `AVAIL_W/H = SCREEN_W/H - HUD_TOP - HUD_BOTTOM` (96 + 90 px)
-- `BASE_SCALE = AVAIL_H / SHAPES_H`, `MIN_SCALE = BASE_SCALE * 0.85`, `MAX_SCALE = BASE_SCALE * 5`
+**SVG text is broken on react-native-svg web:** `Text` from react-native-svg renders invisibly/mispositioned in Expo web (shapes in the same Svg render fine). All board text — roundel counts, territory names, ocean lettering, legend, capital ★ — must be native RN `<Text>`/`<View>` absolutely positioned in board coordinates over the Svg layers. Keep it that way; don't move labels back into Svg.
 
-**Gestures** (RNGH v2):
-- Pan (maxPointers=1): movements < 8px → tap, else camera pan. Uses `runOnJS(handleTap)`.
-- Pinch (2-finger): focal-point zoom. Saves start-of-gesture cx/cy/scale to avoid drift during simultaneous pan+pinch.
-- `Gesture.Simultaneous(pan, pinch)` — 1-finger and 2-finger don't conflict.
-
-**Territory tap detection:** nearest-centre heuristic (threshold: 55 SVG units). Uses mutable refs for `activeIds` and `onTerritoryTap` so the worklet's `runOnJS` always calls the latest handler without recreating gestures.
-
-**Why no SVG onPress:** GestureDetector + SVG onPress conflict; coordinate-based hit testing is more reliable.
+**Dev preview trick:** `/game?autostart=1` auto-starts a 4-player demo campaign (gated on `__DEV__`) so the game screen can be screenshotted without manual setup. The screen is split into a guard wrapper + `CampaignScreen` because conditional early-returns before hooks crash once the game appears mid-mount.
 
 ## Map view modes
 `MapViewMode = 'board' | 'ownership' | 'threats' | 'strength' | 'empire'`
@@ -93,5 +84,4 @@ React Native uses `textShadow: "0 0 12px #color"` (string shorthand, web-style).
 
 ## Outstanding gaps
 1. SQLite persistence (records/stats/high-scores) — web uses sql.js+IndexedDB; mobile still on AsyncStorage. Queued as its own task.
-2. Visual/UX fidelity pass (screen-by-screen parity, e.g. menu title sizing) — queued as its own task.
-3. Premium/paywall (RevenueCat) — **user cancelled this work; do not reintroduce it.**
+2. Premium/paywall (RevenueCat) — **user cancelled this work; do not reintroduce it.**
