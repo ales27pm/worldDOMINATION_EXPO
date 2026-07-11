@@ -4,23 +4,23 @@ import { DICE } from "@/lib/gameArt";
 import type { DiceTier } from "@/game/types";
 
 /**
- * Authentic RISK II die face — original 22×22 sprites (red attacker die,
- * gold defender die) with tint expressed via tintColor so the tiered D12
- * colour language is preserved on React Native.
+ * Classic RISK II die — solid plastic body with printed pips, layered from
+ * two sprites: a neutral body (all 3-D modelling lives in the alpha channel)
+ * tinted to the rank colour, plus an untinted pip overlay. White pips on
+ * coloured bodies; black pips on the white/ivory die, like a real one.
  */
 
 interface TierStyle {
-  sprite: "red" | "gold";
-  /** tintColor overlay; undefined = no tint (show natural sprite colour). */
-  tint?: string;
+  body: string;
+  pips: "light" | "dark";
 }
 
 const TIER_STYLE: Record<DiceTier, TierStyle> = {
-  white:  { sprite: "red",  tint: "#c8c8c8" },
-  yellow: { sprite: "gold"                  },
-  green:  { sprite: "red",  tint: "#4ade80" },
-  red:    { sprite: "red"                   },
-  black:  { sprite: "red",  tint: "#404040" },
+  white:  { body: "#ece7dc", pips: "dark"  },
+  yellow: { body: "#d3a534", pips: "light" },
+  green:  { body: "#3d8b40", pips: "light" },
+  red:    { body: "#b3272d", pips: "light" },
+  black:  { body: "#2f2b28", pips: "light" },
 };
 
 interface RiskDieProps {
@@ -31,23 +31,25 @@ interface RiskDieProps {
 
 export function RiskDie({ value, tier, size = 40 }: RiskDieProps) {
   const face = Math.min(6, Math.max(1, Math.round(value)));
-  const { sprite, tint } = TIER_STYLE[tier];
-  const source = DICE[sprite][face - 1];
+  const { body, pips } = TIER_STYLE[tier];
 
   return (
     <View style={[styles.wrap, { width: size, height: size }]}>
       <Image
-        source={source}
+        source={DICE.body}
         // tintColor as a prop — react-native-web deprecates it in style.
-        tintColor={tint || undefined}
-        style={[styles.img, { width: size, height: size }]}
+        tintColor={body}
+        style={styles.layer}
         resizeMode="contain"
       />
+      <Image source={DICE.pips[pips][face - 1]} style={styles.layer} resizeMode="contain" />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: { alignItems: "center", justifyContent: "center" },
-  img:  { },
+  // Bundled images carry an intrinsic-size style on react-native-web; an
+  // inset-only absoluteFill loses to it, so size the layers explicitly.
+  layer: { ...StyleSheet.absoluteFillObject, width: "100%", height: "100%" },
 });

@@ -1,18 +1,27 @@
+#!/usr/bin/env node
+/* eslint-disable */
 /**
- * Generates the 12 die-face sprites (red_1..6, gold_1..6) at 160×160 — big
- * enough for the largest in-app use (48pt at 3× density = 144px) — from
- * AI-painted material textures, replacing the original 22×22 RISK II scans.
+ * Dice sprite generator — classic RISK II style (solid body, white pips).
  *
- * Design constraints (see components/game/RiskDie.tsx):
- *  - Tiers white/green/black render the RED sprite through a solid tintColor,
- *    which flattens all RGB to the tint and keeps only alpha. So everything
- *    that must survive tinting is encoded in ALPHA: pips are transparent
- *    holes, the edge carries a soft alpha bevel, pip rims dip slightly.
- *  - Untinted (red/yellow tiers) get the full painted look: texture, bevel
- *    light from the upper-left, engraved ink edge, shaded pip rims.
+ * Emits LAYERED sprites at 160×160 (covers the largest in-app use,
+ * 48pt @3× = 144px):
+ *   body.png            one neutral-white die body, NO pips. RiskDie tints it
+ *                       per rank (tintColor flattens RGB, alpha survives), so
+ *                       all 3-D modelling — edge bevel, corner rounding,
+ *                       lower-right falloff — is encoded in the ALPHA channel.
+ *   pip_light_1..6.png  white pips + soft dark seat-ring, transparent body.
+ *                       Overlaid UNtinted on dark bodies (yellow/green/red/black).
+ *   pip_dark_1..6.png   near-black pips for the white/ivory die (a classic
+ *                       white die has black pips).
  *
- * Usage: node scripts/generate-dice.js <redTexture.png> <goldTexture.png>
- * Outputs into assets/game/dice/ (overwrites) + /tmp/dice_new_sheet.png.
+ * Classic reference (user's RISK II gameplay video): attacker navy die,
+ * defender red die, both with flat plastic bodies and bright white pips.
+ * Side identity in our port comes from the plaque backing; the die BODY
+ * colour carries the rank tier, so the sprites stay side-neutral.
+ *
+ * Usage: node scripts/generate-dice.js
+ * Outputs into assets/game/dice/ (overwrites) + /tmp/dice_new_sheet.png
+ * (contact sheet simulating all five rank tints × six faces).
  * After regenerating, restart the expo workflow so Metro re-hashes assets.
  */
 const fs = require('fs');
@@ -33,213 +42,210 @@ function loadPngjs() {
 }
 const { PNG } = loadPngjs();
 
-// 160px covers the largest in-app size (48pt at 3× density = 144px) while
-// keeping the bundled weight reasonable; all geometry scales from a 256 base.
 const SIZE = 160;
-const S = SIZE / 256;
-const CORNER = 52 * S;      // rounded-corner radius
-const EDGE_FEATHER = 1.4;   // px of anti-aliased silhouette edge
-const BEVEL_DEPTH = 12 * S; // px band used for light/shadow at the rim
-const INK = [46, 28, 14];   // engraved outline colour
-const PIP_R = 27 * S;       // pip hole radius
-const PIP_FEATHER = 1.6;    // soft pip edge
-const PIP_RIM = 6 * S;      // shaded ring width around each pip
+const S = SIZE / 256; // geometry authored on a 256 grid
 
-const P = { A: 72 * S, B: 128 * S, C: 184 * S }; // classic 3×3 pip grid
-const PIP_LAYOUT = {
-  1: [[P.B, P.B]],
-  2: [[P.A, P.A], [P.C, P.C]],
-  3: [[P.A, P.A], [P.B, P.B], [P.C, P.C]],
-  4: [[P.A, P.A], [P.C, P.A], [P.A, P.C], [P.C, P.C]],
-  5: [[P.A, P.A], [P.C, P.A], [P.B, P.B], [P.A, P.C], [P.C, P.C]],
-  6: [[P.A, P.A], [P.A, P.B], [P.A, P.C], [P.C, P.A], [P.C, P.B], [P.C, P.C]],
+// ── Geometry ──────────────────────────────────────────────────────────────────
+const CORNER = 46 * S;   // rounded-corner radius
+const MARGIN = 10 * S;   // transparent margin around the body
+const BEVEL  = 26 * S;   // width of the alpha bevel ramp at the silhouette
+const PIP_R  = 21 * S;   // pip radius (faces 1-5)
+const PIP_R6 = 18 * S;   // slightly smaller pips on the 6 face
+
+/** Classic pip layouts on a unit square (0..1). */
+const PIP_LAYOUTS = {
+  1: [[0.5, 0.5]],
+  2: [[0.3, 0.3], [0.7, 0.7]],
+  3: [[0.28, 0.28], [0.5, 0.5], [0.72, 0.72]],
+  4: [[0.3, 0.3], [0.7, 0.3], [0.3, 0.7], [0.7, 0.7]],
+  5: [[0.29, 0.29], [0.71, 0.29], [0.5, 0.5], [0.29, 0.71], [0.71, 0.71]],
+  6: [[0.3, 0.26], [0.7, 0.26], [0.3, 0.5], [0.7, 0.5], [0.3, 0.74], [0.7, 0.74]],
 };
 
-const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
-const smooth = (t) => { const x = clamp(t, 0, 1); return x * x * (3 - 2 * x); };
-
-function readPng(p) { return PNG.sync.read(fs.readFileSync(p)); }
-function writePng(p, png) { fs.writeFileSync(p, PNG.sync.write(png)); }
-
-/** Bilinear sample from src png at floating-point (x, y). */
-function sample(src, x, y) {
-  const x0 = clamp(Math.floor(x), 0, src.width - 1);
-  const y0 = clamp(Math.floor(y), 0, src.height - 1);
-  const x1 = Math.min(x0 + 1, src.width - 1);
-  const y1 = Math.min(y0 + 1, src.height - 1);
-  const fx = x - x0, fy = y - y0;
-  const px = (xx, yy) => {
-    const i = (yy * src.width + xx) * 4;
-    return [src.data[i], src.data[i + 1], src.data[i + 2]];
-  };
-  const a = px(x0, y0), b = px(x1, y0), c = px(x0, y1), d = px(x1, y1);
-  const out = [0, 0, 0];
-  for (let k = 0; k < 3; k++) {
-    const top = a[k] + (b[k] - a[k]) * fx;
-    const bot = c[k] + (d[k] - c[k]) * fx;
-    out[k] = top + (bot - top) * fy;
-  }
-  return out;
+/** Signed distance to the rounded-rect body (negative = inside). */
+function bodySdf(x, y) {
+  const half = SIZE / 2 - MARGIN;
+  const cx = Math.abs(x - SIZE / 2) - (half - CORNER);
+  const cy = Math.abs(y - SIZE / 2) - (half - CORNER);
+  const ox = Math.max(cx, 0);
+  const oy = Math.max(cy, 0);
+  return Math.hypot(ox, oy) + Math.min(Math.max(cx, cy), 0) - CORNER;
 }
 
-/** Signed distance to the rounded-rect silhouette (negative = inside). */
-function roundedRectSdf(x, y) {
-  const half = SIZE / 2;
-  const b = half - CORNER;                    // inner box half-extent
-  const qx = Math.abs(x - half + 0.5) - b;
-  const qy = Math.abs(y - half + 0.5) - b;
-  const ox = Math.max(qx, 0), oy = Math.max(qy, 0);
-  return Math.hypot(ox, oy) + Math.min(Math.max(qx, qy), 0) - CORNER;
+const clamp01 = (v) => Math.min(1, Math.max(0, v));
+/** 0→1 smooth ramp of `d` across [e0, e1]. */
+function smooth(e0, e1, d) {
+  const t = clamp01((d - e0) / (e1 - e0));
+  return t * t * (3 - 2 * t);
 }
 
-function buildDie(tex, face) {
-  // Center-crop the texture to a square region.
-  const side = Math.min(tex.width, tex.height);
-  const sx0 = (tex.width - side) / 2;
-  const sy0 = (tex.height - side) / 2;
-  const png = new PNG({ width: SIZE, height: SIZE });
-  const pips = PIP_LAYOUT[face];
+function newImage() {
+  return new PNG({ width: SIZE, height: SIZE });
+}
 
+function setPx(img, x, y, r, g, b, a) {
+  const i = (y * SIZE + x) * 4;
+  img.data[i] = r;
+  img.data[i + 1] = g;
+  img.data[i + 2] = b;
+  img.data[i + 3] = a;
+}
+
+// ── Body sprite ───────────────────────────────────────────────────────────────
+function renderBody() {
+  const img = newImage();
   for (let y = 0; y < SIZE; y++) {
     for (let x = 0; x < SIZE; x++) {
-      const i = (y * SIZE + x) * 4;
-      const d = roundedRectSdf(x, y); // negative inside
-      if (d > EDGE_FEATHER) { png.data[i + 3] = 0; continue; }
-
-      // Base colour from texture.
-      let [r, g, b] = sample(tex, sx0 + ((x + 0.5) / SIZE) * side, sy0 + ((y + 0.5) / SIZE) * side);
-
-      // Silhouette alpha with feathered edge.
-      let a = smooth((EDGE_FEATHER - d) / (EDGE_FEATHER * 2));
-
-      const depth = -d; // px inside the silhouette
-      // Alpha bevel: outer band slightly translucent so tinted dice keep a rim.
-      a *= 0.80 + 0.20 * smooth(depth / 7);
-
-      // Colour bevel: light from upper-left, shadow lower-right.
-      if (depth < BEVEL_DEPTH) {
-        const e = 1 - depth / BEVEL_DEPTH;                    // 1 at edge → 0 inside
-        const s = ((SIZE - x) + (SIZE - y) - SIZE) / SIZE;    // +1 top-left → −1 bottom-right
-        const f = 1 + e * 0.28 * s;
-        r *= f; g *= f; b *= f;
-      }
-      // Engraved ink outline hugging the silhouette.
-      if (depth < 2.4) {
-        const k = 0.75 * (1 - depth / 2.4);
-        r = r * (1 - k) + INK[0] * k;
-        g = g * (1 - k) + INK[1] * k;
-        b = b * (1 - k) + INK[2] * k;
-      }
-
-      // Pips: transparent holes with a shaded, slightly translucent rim.
-      for (const [cx, cy] of pips) {
-        const pd = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
-        if (pd < PIP_R - PIP_FEATHER) { a = 0; break; }
-        if (pd < PIP_R) {
-          a *= smooth((pd - (PIP_R - PIP_FEATHER)) / PIP_FEATHER);
-        }
-        if (pd >= PIP_R && pd < PIP_R + PIP_RIM) {
-          const t = 1 - (pd - PIP_R) / PIP_RIM;               // 1 at hole → 0 outside
-          const dark = 1 - 0.5 * t * t;
-          r *= dark; g *= dark; b *= dark;
-          a *= 1 - 0.12 * t;                                  // rim survives tinting
-        }
-      }
-
-      png.data[i] = clamp(Math.round(r), 0, 255);
-      png.data[i + 1] = clamp(Math.round(g), 0, 255);
-      png.data[i + 2] = clamp(Math.round(b), 0, 255);
-      png.data[i + 3] = clamp(Math.round(a * 255), 0, 255);
+      const d = bodySdf(x, y);
+      if (d > 0.75) { setPx(img, x, y, 0, 0, 0, 0); continue; }
+      // Silhouette with 1.5px anti-aliased edge.
+      let alpha = smooth(0.75, -0.75, d);
+      // Edge bevel: alpha ramps up across BEVEL px, shaped by the light
+      // direction (upper-left brighter ≈ thinner ramp, lower-right deeper).
+      const nx = (x - SIZE / 2) / (SIZE / 2);
+      const ny = (y - SIZE / 2) / (SIZE / 2);
+      const lightDot = clamp01(0.5 - 0.5 * ((nx + ny) / Math.SQRT2)); // 1 = toward light
+      const bevelDepth = 0.34 + 0.3 * (1 - lightDot); // shadow side digs deeper
+      const bevel = 1 - bevelDepth * smooth(-BEVEL, 0.0, d);
+      // Gentle face falloff toward lower-right for a matte plastic read.
+      const faceShade = 1 - 0.1 * clamp01((nx + ny) / 2 + 0.5);
+      alpha *= bevel * faceShade;
+      setPx(img, x, y, 255, 255, 255, Math.round(255 * clamp01(alpha)));
     }
   }
-  return png;
+  return img;
 }
 
-/** Downscale (box filter) — for the preview contact sheet only. */
-function scaleDown(src, size) {
-  const out = new PNG({ width: size, height: size });
-  const k = src.width / size;
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      let r = 0, g = 0, b = 0, a = 0, n = 0;
-      for (let sy = Math.floor(y * k); sy < Math.min((y + 1) * k, src.height); sy++) {
-        for (let sx = Math.floor(x * k); sx < Math.min((x + 1) * k, src.width); sx++) {
-          const i = (sy * src.width + sx) * 4;
-          const al = src.data[i + 3];
-          r += src.data[i] * al; g += src.data[i + 1] * al; b += src.data[i + 2] * al;
-          a += al; n++;
+// ── Pip sprites ───────────────────────────────────────────────────────────────
+/**
+ * variant 'light': white pip, soft dark seat-ring (reads as a printed pip with
+ * a shadow seat on light bodies; the ring disappears on dark bodies).
+ * variant 'dark': near-black pip with a faint white rim-light below-right.
+ */
+function renderPips(face, variant) {
+  const img = newImage();
+  const pr = face === 6 ? PIP_R6 : PIP_R;
+  const pips = PIP_LAYOUTS[face].map(([u, v]) => ({
+    x: MARGIN + u * (SIZE - 2 * MARGIN),
+    y: MARGIN + v * (SIZE - 2 * MARGIN),
+  }));
+  for (let y = 0; y < SIZE; y++) {
+    for (let x = 0; x < SIZE; x++) {
+      let r = 0, g = 0, b = 0, a = 0;
+      for (const p of pips) {
+        const d = Math.hypot(x - p.x, y - p.y);
+        if (variant === 'light') {
+          const ring = 0.4 * smooth(pr + 3.5 * S, pr + 1 * S, d) * smooth(pr - 1.5 * S, pr + 1 * S, d);
+          const core = smooth(pr + 0.75, pr - 0.75, d);
+          if (core > 0) {
+            // White core over any ring contribution.
+            const shade = 1 - 0.12 * clamp01((y - p.y + pr) / (2 * pr)); // subtle top-lit dome
+            const cr = Math.round(255 * shade);
+            r = cr; g = cr; b = Math.round(255 * Math.min(1, shade + 0.02));
+            a = Math.max(a, core);
+          } else if (ring > 0 && a < ring) {
+            r = 52; g = 34; b = 20; // dark seat ring
+            a = ring;
+          }
+        } else {
+          const core = smooth(pr + 0.75, pr - 0.75, d);
+          if (core > 0) {
+            const shade = 0.16 * clamp01((y - p.y + pr) / (2 * pr));
+            const cr = Math.round(24 + 26 * shade);
+            r = cr; g = Math.round(cr * 0.92); b = Math.round(cr * 0.85);
+            a = Math.max(a, core);
+          }
         }
       }
-      const o = (y * size + x) * 4;
-      out.data[o] = a ? r / a : 0;
-      out.data[o + 1] = a ? g / a : 0;
-      out.data[o + 2] = a ? b / a : 0;
-      out.data[o + 3] = n ? a / n : 0;
+      setPx(img, x, y, r, g, b, Math.round(255 * clamp01(a)));
     }
   }
-  return out;
+  return img;
 }
 
-/** Simulate RN tintColor: RGB → tint, alpha preserved. */
-function tinted(src, hex) {
-  const t = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
-  const out = new PNG({ width: src.width, height: src.height });
-  src.data.copy(out.data);
-  for (let i = 0; i < out.data.length; i += 4) {
-    out.data[i] = t[0]; out.data[i + 1] = t[1]; out.data[i + 2] = t[2];
+// ── Contact sheet (simulates RiskDie's two-layer tint compositing) ───────────
+const TIER_SIM = [
+  { name: 'white',  body: [0xec, 0xe7, 0xdc], pips: 'dark' },
+  { name: 'yellow', body: [0xd3, 0xa5, 0x34], pips: 'light' },
+  { name: 'green',  body: [0x3d, 0x8b, 0x40], pips: 'light' },
+  { name: 'red',    body: [0xb3, 0x27, 0x2d], pips: 'light' },
+  { name: 'black',  body: [0x2f, 0x2b, 0x28], pips: 'light' },
+];
+
+function buildSheet(body, pipSets) {
+  const CELL = 84;
+  const PAD = 10;
+  const sheet = new PNG({
+    width: PAD + 6 * (CELL + PAD),
+    height: PAD + TIER_SIM.length * (CELL + PAD),
+  });
+  // Parchment backdrop so alpha edges are visible.
+  for (let i = 0; i < sheet.data.length; i += 4) {
+    sheet.data[i] = 0x8a; sheet.data[i + 1] = 0x74; sheet.data[i + 2] = 0x52; sheet.data[i + 3] = 255;
   }
-  return out;
-}
-
-function pasteOver(dst, src, ox, oy) {
-  for (let y = 0; y < src.height; y++) {
-    for (let x = 0; x < src.width; x++) {
-      const si = (y * src.width + x) * 4;
-      const di = ((y + oy) * dst.width + (x + ox)) * 4;
-      const a = src.data[si + 3] / 255;
-      for (let k = 0; k < 3; k++) {
-        dst.data[di + k] = src.data[si + k] * a + dst.data[di + k] * (1 - a);
+  TIER_SIM.forEach((tier, row) => {
+    for (let face = 1; face <= 6; face++) {
+      const ox = PAD + (face - 1) * (CELL + PAD);
+      const oy = PAD + row * (CELL + PAD);
+      const pips = pipSets[tier.pips][face - 1];
+      for (let y = 0; y < CELL; y++) {
+        for (let x = 0; x < CELL; x++) {
+          const sx = Math.min(SIZE - 1, Math.round((x / CELL) * SIZE));
+          const sy = Math.min(SIZE - 1, Math.round((y / CELL) * SIZE));
+          const si = (sy * SIZE + sx) * 4;
+          // Layer 1: body tinted → RGB = tint, A = body alpha.
+          const bodyA = body.data[si + 3] / 255;
+          let r = tier.body[0], g = tier.body[1], b = tier.body[2], a = bodyA;
+          // Layer 2: pips over.
+          const pipA = pips.data[si + 3] / 255;
+          if (pipA > 0) {
+            r = Math.round(pips.data[si] * pipA + r * (1 - pipA));
+            g = Math.round(pips.data[si + 1] * pipA + g * (1 - pipA));
+            b = Math.round(pips.data[si + 2] * pipA + b * (1 - pipA));
+            a = Math.max(a, pipA);
+          }
+          const di = ((oy + y) * sheet.width + (ox + x)) * 4;
+          const bg = sheet.data[di];
+          sheet.data[di] = Math.round(r * a + bg * (1 - a));
+          sheet.data[di + 1] = Math.round(g * a + sheet.data[di + 1] * (1 - a));
+          sheet.data[di + 2] = Math.round(b * a + sheet.data[di + 2] * (1 - a));
+          sheet.data[di + 3] = 255;
+        }
       }
-      dst.data[di + 3] = 255;
     }
-  }
+  });
+  return sheet;
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────
-const [redTexPath, goldTexPath] = process.argv.slice(2);
-if (!redTexPath || !goldTexPath) {
-  console.error('Usage: node scripts/generate-dice.js <redTexture.png> <goldTexture.png>');
-  process.exit(1);
-}
 const outDir = path.join(__dirname, '..', 'assets', 'game', 'dice');
-const redTex = readPng(redTexPath);
-const goldTex = readPng(goldTexPath);
+fs.mkdirSync(outDir, { recursive: true });
 
-const dice = { red: [], gold: [] };
-for (const [name, tex] of [['red', redTex], ['gold', goldTex]]) {
+const body = renderBody();
+const pipSets = { light: [], dark: [] };
+for (let face = 1; face <= 6; face++) {
+  pipSets.light.push(renderPips(face, 'light'));
+  pipSets.dark.push(renderPips(face, 'dark'));
+}
+
+function save(img, file) {
+  fs.writeFileSync(file, PNG.sync.write(img));
+  console.log('wrote', file, fs.statSync(file).size, 'bytes');
+}
+
+save(body, path.join(outDir, 'body.png'));
+for (let face = 1; face <= 6; face++) {
+  save(pipSets.light[face - 1], path.join(outDir, `pip_light_${face}.png`));
+  save(pipSets.dark[face - 1], path.join(outDir, `pip_dark_${face}.png`));
+}
+
+// Remove the previous single-layer sprites (superseded).
+for (const set of ['red', 'gold']) {
   for (let face = 1; face <= 6; face++) {
-    const die = buildDie(tex, face);
-    dice[name].push(die);
-    writePng(path.join(outDir, `${name}_${face}.png`), die);
+    const old = path.join(outDir, `${set}_${face}.png`);
+    if (fs.existsSync(old)) { fs.unlinkSync(old); console.log('removed', old); }
   }
 }
-console.log('wrote 12 sprites to', outDir);
 
-// Contact sheet: red row, gold row, then tint simulations (white/green/black tiers).
-const CELL = 96, PAD = 12;
-const rows = [
-  dice.red.map((d) => scaleDown(d, CELL)),
-  dice.gold.map((d) => scaleDown(d, CELL)),
-  dice.red.map((d) => tinted(scaleDown(d, CELL), '#c8c8c8')),
-  dice.red.map((d) => tinted(scaleDown(d, CELL), '#4ade80')),
-  dice.red.map((d) => tinted(scaleDown(d, CELL), '#404040')),
-];
-const sheet = new PNG({ width: 6 * (CELL + PAD) + PAD, height: rows.length * (CELL + PAD) + PAD });
-for (let i = 0; i < sheet.data.length; i += 4) { // walnut background
-  sheet.data[i] = 37; sheet.data[i + 1] = 26; sheet.data[i + 2] = 19; sheet.data[i + 3] = 255;
-}
-rows.forEach((row, ry) => row.forEach((cell, cx) => {
-  pasteOver(sheet, cell, PAD + cx * (CELL + PAD), PAD + ry * (CELL + PAD));
-}));
-writePng('/tmp/dice_new_sheet.png', sheet);
-console.log('contact sheet: /tmp/dice_new_sheet.png');
+save(buildSheet(body, pipSets), '/tmp/dice_new_sheet.png');
+console.log('done');
