@@ -95,6 +95,28 @@ export default function HomeScreen() {
     ]);
   }, [continueMeta, abandonGame]);
 
+  // Starting a new campaign overwrites the single save slot once the new game
+  // autosaves, so confirm first when a saved campaign exists. Same
+  // Alert/window.confirm split as confirmAbandon (RN Alert is a no-op on web).
+  const confirmNewCampaign = useCallback(() => {
+    if (!continueMeta) {
+      router.push('/setup');
+      return;
+    }
+    const title = 'Start a New Campaign?';
+    const message = `Your saved campaign (Turn ${continueMeta.turn} — ${continueMeta.objective}) will be replaced once the new campaign begins.`;
+    const onConfirm = () => router.push('/setup');
+    if (Platform.OS === 'web') {
+      // eslint-disable-next-line no-alert
+      if (window.confirm(`${title}\n\n${message}`)) onConfirm();
+      return;
+    }
+    Alert.alert(title, message, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'New Campaign', style: 'destructive', onPress: onConfirm },
+    ]);
+  }, [continueMeta, router]);
+
   if (loadingSave) {
     return (
       <View style={styles.loading}>
@@ -161,7 +183,7 @@ export default function HomeScreen() {
 
           <MenuButton
             label="New Campaign"
-            onPress={() => router.push('/setup')}
+            onPress={confirmNewCampaign}
           />
 
           {game && (
