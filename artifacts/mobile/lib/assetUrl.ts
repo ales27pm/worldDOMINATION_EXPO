@@ -1,30 +1,34 @@
 /**
  * Build a URL to a public game asset served from object storage.
  *
- * Assets are uploaded via the Replit App Storage pane and served by the API
+ * Assets live in the bucket's public search path and are served by the API
  * server at GET /api/storage/public-objects/<filePath>.
  *
  * Usage:
  *   import { assetUrl } from '../lib/assetUrl';
- *   <Image source={{ uri: assetUrl('generals/napoleon.png') }} />
+ *   <Image source={{ uri: assetUrl('public/risk/world-map.png') }} />
  *
- * The API_BASE_URL env variable is set automatically by Expo via app.config.js.
- * Falls back to the Replit dev domain during development if not set.
+ * Base-URL resolution order:
+ *   1. Constants.expoConfig.extra.apiBaseUrl (explicit override, if configured)
+ *   2. EXPO_PUBLIC_API_BASE_URL (explicit env override)
+ *   3. EXPO_PUBLIC_DOMAIN — set by the dev workflow and baked into production
+ *      builds by scripts/build.js, so native and web resolve the same origin.
  */
 
 import Constants from "expo-constants";
 
 function getApiBase(): string {
-  // Injected by app.config.js extra → available at runtime via Constants.expoConfig
-  const base =
+  const extra =
     (Constants.expoConfig?.extra as Record<string, string> | undefined)
       ?.apiBaseUrl ?? "";
-  if (base) return base.replace(/\/$/, "");
+  if (extra) return extra.replace(/\/$/, "");
 
-  // Fallback for local Expo Go development
-  if (__DEV__) {
-    const devDomain = process.env.EXPO_PUBLIC_API_BASE_URL ?? "";
-    if (devDomain) return devDomain.replace(/\/$/, "");
+  const explicit = process.env.EXPO_PUBLIC_API_BASE_URL ?? "";
+  if (explicit) return explicit.replace(/\/$/, "");
+
+  const domain = process.env.EXPO_PUBLIC_DOMAIN ?? "";
+  if (domain) {
+    return `https://${domain.replace(/^https?:\/\//, "").replace(/\/$/, "")}`;
   }
 
   return "";
@@ -33,8 +37,8 @@ function getApiBase(): string {
 /**
  * Returns the full URL for a public object-storage asset.
  *
- * @param filePath  Relative path within the bucket's public search path,
- *                  e.g. "generals/napoleon.png" or "icons/flag.png".
+ * @param filePath  Path relative to the bucket's public search path,
+ *                  e.g. "public/risk/sfx/click.mp3".
  */
 export function assetUrl(filePath: string): string {
   const base = getApiBase();

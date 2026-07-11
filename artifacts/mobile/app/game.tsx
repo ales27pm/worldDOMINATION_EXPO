@@ -10,7 +10,10 @@ import { electionBudget } from '@/game/engine';
 import { TERRITORY_MAP } from '@/game/mapData';
 import { tournamentResult } from '@/game/tournament';
 import { Colors } from '@/constants/colors';
-import type { GameState, TerritoryId } from '@/game/types';
+import type { GameAction, GameState, TerritoryId } from '@/game/types';
+import { preloadBattleViews } from '@/game/battleViews';
+import { playActionSound, useGameSounds } from '@/hooks/useGameSounds';
+import { toggleSfxMuted, useSfxMuted } from '@/lib/sfx';
 import GameMap, { MAP_VIEW_LABELS, MAP_VIEW_MODES, type MapViewMode } from '@/components/game/GameMap';
 import GamePanel from '@/components/game/GamePanel';
 import PlayerRoster from '@/components/game/PlayerRoster';
@@ -27,8 +30,22 @@ import {
 
 export default function GameScreen() {
   const router = useRouter();
-  const { game, dispatch, abandonGame } = useGame();
+  const { game, dispatch: rawDispatch, abandonGame } = useGame();
   const { recordResult } = useTournament();
+
+  // Every human order gets its RISK II sound cue before it hits the engine.
+  const dispatch = useCallback(
+    (action: GameAction) => {
+      playActionSound(action);
+      rawDispatch(action);
+    },
+    [rawDispatch],
+  );
+  const sfxMuted = useSfxMuted();
+
+  // State-transition sound director: battles, proposals, handoffs, victory.
+  // Battle views are always enabled on mobile.
+  useGameSounds(game, true);
 
   const [selected, setSelected] = useState<TerritoryId | null>(null);
   const [deployAmount, setDeployAmount] = useState(1);
@@ -57,17 +74,18 @@ export default function GameScreen() {
     if (game.pendingOccupy) {
       const timer = setTimeout(() => {
         const action = aiNextAction(game);
-        if (action) dispatch(action);
+        // AI orders bypass the human sound cue — battle audio is state-driven.
+        if (action) rawDispatch(action);
       }, 100);
       return () => clearTimeout(timer);
     }
     const delay = game.phase === 'initialDeploy' || game.phase === 'territoryGrab' ? 100 : 180;
     const timer = setTimeout(() => {
       const action = aiNextAction(game);
-      if (action) dispatch(action);
+      if (action) rawDispatch(action);
     }, delay);
     return () => clearTimeout(timer);
-  }, [game, isHumanTurn, dispatch]);
+  }, [game, isHumanTurn, rawDispatch]);
 
   // ── Deselect when phase changes ────────────────────────────────────────────
   useEffect(() => {
@@ -153,6 +171,11 @@ export default function GameScreen() {
     }
     return { interactive: inter, targets: tgts };
   }, [game, selected, isHumanActive]);
+
+  // Pre-warm the cinematic backdrops as soon as an assault is possible.
+  useEffect(() => {
+    if (game.phase === 'attack' && targets.size > 0) preloadBattleViews(targets);
+  }, [game.phase, targets]);
 
   // ── Territory tap handler ──────────────────────────────────────────────────
   const handleTerritoryTap = useCallback((id: TerritoryId) => {
@@ -281,6 +304,12 @@ export default function GameScreen() {
           </View>
 
           <View style={styles.topRight}>
+            {/* Global sound toggle (persisted) */}
+            <Pressable onPress={toggleSfxMuted} style={styles.viewModeBtn}>
+              <Text style={[styles.viewModeText, sfxMuted && { opacity: 0.55 }]}>
+                {sfxMuted ? 'SFX ✕' : 'SFX ♪'}
+              </Text>
+            </Pressable>
             {/* View mode toggle */}
             <Pressable onPress={cycleViewMode} style={styles.viewModeBtn}>
               <Text style={styles.viewModeText}>{MAP_VIEW_LABELS[viewMode].toUpperCase()}</Text>
@@ -387,17 +416,17 @@ const styles = StyleSheet.create({
   topBar: { backgroundColor: Colors.bgCard, borderBottomWidth: 1, borderBottomColor: Colors.border },
   topRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, gap: 8 },
   exitBtn: { padding: 4 },
-  exitText: { color: Colors.gold, fontFamily: 'Inter_500Medium', fontSize: 13 },
+  exitText: { color: Colors.gold, fontFamily: 'Alegreya_500Medium', fontSize: 13 },
   turnInfo: { flex: 1, alignItems: 'center', gap: 2 },
-  turnText: { color: Colors.text, fontFamily: 'Inter_700Bold', fontSize: 14 },
-  phaseText: { color: Colors.goldDim, fontFamily: 'Inter_500Medium', fontSize: 10, letterSpacing: 2 },
+  turnText: { color: Colors.text, fontFamily: 'Alegreya_700Bold', fontSize: 14 },
+  phaseText: { color: Colors.goldDim, fontFamily: 'Alegreya_500Medium', fontSize: 10, letterSpacing: 2 },
   topRight: { alignItems: 'flex-end', gap: 2 },
   viewModeBtn: {
     borderWidth: 1, borderColor: Colors.border,
     paddingHorizontal: 8, paddingVertical: 3,
     backgroundColor: Colors.bgCard,
   },
-  viewModeText: { color: Colors.goldDim, fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 2 },
+  viewModeText: { color: Colors.goldDim, fontFamily: 'Alegreya_600SemiBold', fontSize: 9, letterSpacing: 2 },
   mapContainer: { flex: 1 },
   battleContainer: { paddingHorizontal: 12, paddingVertical: 4 },
   bottomBar: { backgroundColor: Colors.bgCard, borderTopWidth: 1, borderTopColor: Colors.border },
@@ -407,14 +436,14 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.bgCard, borderTopWidth: 1, borderTopColor: Colors.goldDim,
     padding: 12, gap: 6,
   },
-  electionTitle: { color: Colors.gold, fontFamily: 'Inter_700Bold', fontSize: 13, letterSpacing: 2 },
-  electionBid: { color: Colors.text, fontFamily: 'Inter_500Medium', fontSize: 14 },
-  electionPoints: { color: Colors.textMuted, fontFamily: 'Inter_400Regular', fontSize: 12 },
+  electionTitle: { color: Colors.gold, fontFamily: 'Alegreya_700Bold', fontSize: 13, letterSpacing: 2 },
+  electionBid: { color: Colors.text, fontFamily: 'Alegreya_500Medium', fontSize: 14 },
+  electionPoints: { color: Colors.textMuted, fontFamily: 'Alegreya_400Regular', fontSize: 12 },
   electionBtns: { flexDirection: 'row', gap: 8 },
   bidBtn: { backgroundColor: Colors.gold, paddingVertical: 8, paddingHorizontal: 16 },
-  bidBtnText: { color: Colors.bg, fontFamily: 'Inter_700Bold', fontSize: 13 },
+  bidBtnText: { color: Colors.bg, fontFamily: 'Alegreya_700Bold', fontSize: 13 },
   passBtn: { borderWidth: 1, borderColor: Colors.border, paddingVertical: 8, paddingHorizontal: 16 },
-  passBtnText: { color: Colors.textMuted, fontFamily: 'Inter_500Medium', fontSize: 13 },
+  passBtnText: { color: Colors.textMuted, fontFamily: 'Alegreya_500Medium', fontSize: 13 },
 
   // Roster overlay
   rosterOverlay: {
@@ -428,6 +457,6 @@ const styles = StyleSheet.create({
     zIndex: 100,
   },
   rosterHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  rosterTitle: { color: Colors.gold, fontFamily: 'Inter_700Bold', fontSize: 12, letterSpacing: 3 },
+  rosterTitle: { color: Colors.gold, fontFamily: 'Alegreya_700Bold', fontSize: 12, letterSpacing: 3 },
   rosterClose: { color: Colors.textMuted, fontSize: 18, padding: 4 },
 });

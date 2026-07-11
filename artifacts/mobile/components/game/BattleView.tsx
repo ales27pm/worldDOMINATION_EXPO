@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { Colors } from "@/constants/colors";
 import { battleViewUrl } from "@/game/battleViews";
-import { playSfx, playRandomSfx } from "@/lib/sfx";
+import { playSfx, playRandomSfx, type SfxName } from "@/lib/sfx";
 import { TERRITORY_MAP } from "@/game/mapData";
 import type { BattleReport, GameState } from "@/game/types";
 import { RiskDie } from "./RiskDie";
@@ -74,22 +74,22 @@ export function BattleView({ game }: Props) {
     clearAll();
 
     // Sound: dice roll → volley/cannon → optional trumpet
-    playSfx("dice_roll", { volume: 0.62 }).then((s) => stopFns.current.push(s));
+    stopFns.current.push(playSfx("dice_roll", { volume: 0.62 }));
 
     const heavy =
       scene.rounds > 2 ||
       scene.attackerLosses + scene.defenderLosses >= 4;
     const t1 = setTimeout(() => {
-      const names = heavy
+      const names: SfxName[] = heavy
         ? ["volley_long", "roar", "cannon_a"]
         : ["volley_short", "cannon_b", "cannon_c", "clash_c"];
-      playRandomSfx(names, { volume: 0.45 }).then((s) => stopFns.current.push(s));
+      stopFns.current.push(playRandomSfx(names, { volume: 0.45 }));
     }, 260);
     soundTimers.current.push(t1);
 
     if (scene.conquered) {
       const t2 = setTimeout(() => {
-        playSfx("trumpet", { volume: 0.5 }).then((s) => stopFns.current.push(s));
+        stopFns.current.push(playSfx("trumpet", { volume: 0.5 }));
       }, 1280);
       soundTimers.current.push(t2);
     }
@@ -216,20 +216,20 @@ const styles = StyleSheet.create({
   },
   territoryLabel: {
     color: "#fff",
-    fontFamily: "Inter_700Bold",
+    fontFamily: "Alegreya_700Bold",
     fontSize: 26,
     letterSpacing: 3,
   },
   battleLine: {
     color: "#ccc",
-    fontFamily: "Inter_400Regular",
+    fontFamily: "Alegreya_400Regular",
     fontSize: 14,
     textAlign: "center",
   },
-  playerName: { fontFamily: "Inter_700Bold" },
+  playerName: { fontFamily: "Alegreya_700Bold" },
   rounds: {
     color: Colors.goldDim,
-    fontFamily: "Inter_400Regular",
+    fontFamily: "Alegreya_400Regular",
     fontSize: 12,
     letterSpacing: 1,
   },
@@ -242,14 +242,14 @@ const styles = StyleSheet.create({
   diceGroup: { alignItems: "center", gap: 10, flex: 1 },
   diceRow: { flexDirection: "row", gap: 8 },
   sideLabel: {
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: "Alegreya_600SemiBold",
     fontSize: 12,
     letterSpacing: 1,
     textAlign: "center",
   },
   losses: {
     color: Colors.textCrimson,
-    fontFamily: "Inter_700Bold",
+    fontFamily: "Alegreya_700Bold",
     fontSize: 22,
   },
   vs: { color: Colors.gold, fontSize: 28 },
@@ -263,13 +263,13 @@ const styles = StyleSheet.create({
   },
   rollCtaText: {
     color: Colors.gold,
-    fontFamily: "Inter_700Bold",
+    fontFamily: "Alegreya_700Bold",
     fontSize: 22,
     letterSpacing: 4,
   },
   rollCtaHint: {
     color: Colors.goldDim,
-    fontFamily: "Inter_400Regular",
+    fontFamily: "Alegreya_400Regular",
     fontSize: 12,
     letterSpacing: 2,
   },
@@ -281,7 +281,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   resultText: {
-    fontFamily: "Inter_700Bold",
+    fontFamily: "Alegreya_700Bold",
     fontSize: 20,
     letterSpacing: 4,
   },

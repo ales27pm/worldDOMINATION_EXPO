@@ -279,30 +279,30 @@ const styles = StyleSheet.create({
   inner: { flex: 1 },
 
   back: { padding: 4 },
-  backText: { color: Colors.gold, fontFamily: 'Inter_500Medium', fontSize: 13 },
+  backText: { color: Colors.gold, fontFamily: 'Alegreya_500Medium', fontSize: 13 },
 
   heroBlock: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32, gap: 12 },
-  heroLabel: { color: Colors.goldDim, fontFamily: 'Inter_500Medium', fontSize: 11, letterSpacing: 6 },
-  heroTitle: { color: Colors.gold, fontFamily: 'Inter_700Bold', fontSize: 44, letterSpacing: 6 },
+  heroLabel: { color: Colors.goldDim, fontFamily: 'Alegreya_500Medium', fontSize: 11, letterSpacing: 6 },
+  heroTitle: { color: Colors.gold, fontFamily: 'IMFellEnglishSC_400Regular', fontSize: 44, letterSpacing: 6 },
   divider: { width: 60, height: 1, backgroundColor: Colors.gold, opacity: 0.4 },
-  heroSub: { color: Colors.textMuted, fontFamily: 'Inter_400Regular', fontSize: 13, textAlign: 'center', lineHeight: 20 },
+  heroSub: { color: Colors.textMuted, fontFamily: 'Alegreya_400Regular', fontSize: 13, textAlign: 'center', lineHeight: 20 },
 
   startCard: { margin: 24, gap: 12 },
-  startLabel: { color: Colors.goldDim, fontFamily: 'Inter_600SemiBold', fontSize: 11, letterSpacing: 3 },
+  startLabel: { color: Colors.goldDim, fontFamily: 'Alegreya_600SemiBold', fontSize: 11, letterSpacing: 3 },
   nameInput: {
     borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.bgCard,
-    color: Colors.text, fontFamily: 'Inter_400Regular', fontSize: 16,
+    color: Colors.text, fontFamily: 'Alegreya_400Regular', fontSize: 16,
     paddingHorizontal: 14, paddingVertical: 12,
   },
   startBtn: { backgroundColor: Colors.gold, paddingVertical: 16, alignItems: 'center' },
-  startBtnText: { color: Colors.bg, fontFamily: 'Inter_700Bold', fontSize: 14, letterSpacing: 3 },
+  startBtnText: { color: Colors.bg, fontFamily: 'Alegreya_700Bold', fontSize: 14, letterSpacing: 3 },
 
-  footer: { color: Colors.textMuted, fontFamily: 'Inter_400Regular', fontSize: 10, textAlign: 'center', paddingBottom: 12, letterSpacing: 1 },
+  footer: { color: Colors.textMuted, fontFamily: 'Alegreya_400Regular', fontSize: 10, textAlign: 'center', paddingBottom: 12, letterSpacing: 1 },
 
   // Active tournament
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10 },
-  headerTitle: { color: Colors.gold, fontFamily: 'Inter_700Bold', fontSize: 14, letterSpacing: 4 },
-  abandonText: { color: Colors.textCrimson, fontFamily: 'Inter_500Medium', fontSize: 12 },
+  headerTitle: { color: Colors.gold, fontFamily: 'IMFellEnglishSC_400Regular', fontSize: 14, letterSpacing: 4 },
+  abandonText: { color: Colors.textCrimson, fontFamily: 'Alegreya_500Medium', fontSize: 12 },
 
   scoreBar: {
     flexDirection: 'row', justifyContent: 'space-around',
@@ -310,10 +310,10 @@ const styles = StyleSheet.create({
     borderColor: Colors.border, backgroundColor: Colors.bgCard, marginBottom: 4,
   },
   scoreItem: { alignItems: 'center', gap: 2 },
-  scoreName: { color: Colors.text, fontFamily: 'Inter_700Bold', fontSize: 15 },
-  scorePoints: { color: Colors.gold, fontFamily: 'Inter_700Bold', fontSize: 22 },
-  scoreGame: { color: Colors.text, fontFamily: 'Inter_700Bold', fontSize: 15 },
-  scoreLabel: { color: Colors.textMuted, fontFamily: 'Inter_400Regular', fontSize: 9, letterSpacing: 2 },
+  scoreName: { color: Colors.text, fontFamily: 'Alegreya_700Bold', fontSize: 15 },
+  scorePoints: { color: Colors.gold, fontFamily: 'Alegreya_700Bold', fontSize: 22 },
+  scoreGame: { color: Colors.text, fontFamily: 'Alegreya_700Bold', fontSize: 15 },
+  scoreLabel: { color: Colors.textMuted, fontFamily: 'Alegreya_400Regular', fontSize: 9, letterSpacing: 2 },
 
   scroll: { flex: 1 },
   list: { padding: 12, gap: 6, paddingBottom: 40 },
@@ -327,31 +327,31 @@ const styles = StyleSheet.create({
   gameRowLocked: { opacity: 0.45 },
   gameRowElim: { borderColor: Colors.crimson },
 
-  roman: { color: Colors.textMuted, fontFamily: 'Inter_700Bold', fontSize: 12, minWidth: 28, textAlign: 'right' },
+  roman: { color: Colors.textMuted, fontFamily: 'Alegreya_700Bold', fontSize: 12, minWidth: 28, textAlign: 'right' },
   romanCurrent: { color: Colors.gold },
 
   gameInfo: { flex: 1, gap: 2 },
-  gameTitle: { color: Colors.text, fontFamily: 'Inter_600SemiBold', fontSize: 14 },
+  gameTitle: { color: Colors.text, fontFamily: 'Alegreya_600SemiBold', fontSize: 14 },
   gameTitleLocked: { color: Colors.textMuted },
-  gameMeta: { color: Colors.textMuted, fontFamily: 'Inter_400Regular', fontSize: 10 },
+  gameMeta: { color: Colors.textMuted, fontFamily: 'Alegreya_400Regular', fontSize: 10 },
 
   badgeWrap: { alignItems: 'flex-end', gap: 2 },
-  badge: { fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 2 },
+  badge: { fontFamily: 'Alegreya_700Bold', fontSize: 10, letterSpacing: 2 },
   badgeWin: { color: Colors.gold },
   badgeElim: { color: Colors.textCrimson },
   badgeProgress: { color: '#6ab' },
-  badgePts: { color: Colors.textMuted, fontFamily: 'Inter_400Regular', fontSize: 11 },
+  badgePts: { color: Colors.textMuted, fontFamily: 'Alegreya_400Regular', fontSize: 11 },
 
-  playNow: { color: Colors.gold, fontFamily: 'Inter_700Bold', fontSize: 13, letterSpacing: 2 },
-  lockedPts: { color: Colors.textMuted, fontFamily: 'Inter_400Regular', fontSize: 11 },
+  playNow: { color: Colors.gold, fontFamily: 'Alegreya_700Bold', fontSize: 13, letterSpacing: 2 },
+  lockedPts: { color: Colors.textMuted, fontFamily: 'Alegreya_400Regular', fontSize: 11 },
 
   finalCard: {
     marginTop: 16, borderWidth: 1, borderColor: Colors.gold,
     backgroundColor: '#1e1508', padding: 24, alignItems: 'center', gap: 10,
   },
-  finalTitle: { color: Colors.gold, fontFamily: 'Inter_700Bold', fontSize: 20, letterSpacing: 3 },
-  finalScore: { color: Colors.text, fontFamily: 'Inter_400Regular', fontSize: 15 },
-  finalRating: { color: Colors.goldDim, fontFamily: 'Inter_600SemiBold', fontSize: 13, letterSpacing: 3 },
+  finalTitle: { color: Colors.gold, fontFamily: 'Alegreya_700Bold', fontSize: 20, letterSpacing: 3 },
+  finalScore: { color: Colors.text, fontFamily: 'Alegreya_400Regular', fontSize: 15 },
+  finalRating: { color: Colors.goldDim, fontFamily: 'Alegreya_600SemiBold', fontSize: 13, letterSpacing: 3 },
   newRunBtn: { marginTop: 8, borderWidth: 1, borderColor: Colors.border, paddingVertical: 12, paddingHorizontal: 32 },
-  newRunText: { color: Colors.textMuted, fontFamily: 'Inter_600SemiBold', fontSize: 12, letterSpacing: 2 },
+  newRunText: { color: Colors.textMuted, fontFamily: 'Alegreya_600SemiBold', fontSize: 12, letterSpacing: 2 },
 });

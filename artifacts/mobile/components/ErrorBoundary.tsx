@@ -32,8 +32,8 @@ export class ErrorBoundary extends Component<{ children: React.ReactNode }, Stat
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg, justifyContent: 'center', alignItems: 'center', padding: 32 },
-  title: { color: Colors.gold, fontFamily: 'Inter_700Bold', fontSize: 22, marginBottom: 16 },
-  msg: { color: Colors.textMuted, fontFamily: 'Inter_400Regular', fontSize: 14, textAlign: 'center', marginBottom: 24 },
+  title: { color: Colors.gold, fontFamily: 'Alegreya_700Bold', fontSize: 22, marginBottom: 16 },
+  msg: { color: Colors.textMuted, fontFamily: 'Alegreya_400Regular', fontSize: 14, textAlign: 'center', marginBottom: 24 },
   btn: { backgroundColor: Colors.gold, paddingVertical: 12, paddingHorizontal: 32 },
-  btnText: { color: Colors.bg, fontFamily: 'Inter_700Bold', fontSize: 14 },
+  btnText: { color: Colors.bg, fontFamily: 'Alegreya_700Bold', fontSize: 14 },
 });

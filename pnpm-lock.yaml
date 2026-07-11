@@ -6,63 +6,15 @@ settings:
 
 catalogs:
   default:
-    '@replit/vite-plugin-cartographer':
-      specifier: ^0.5.21
-      version: 0.5.21
-    '@replit/vite-plugin-runtime-error-modal':
-      specifier: ^0.0.6
-      version: 0.0.6
-    '@tailwindcss/vite':
-      specifier: ^4.1.14
-      version: 4.3.2
     '@tanstack/react-query':
       specifier: ^5.90.21
       version: 5.101.2
-    '@types/node':
-      specifier: ^25.3.3
-      version: 25.9.4
-    '@types/react':
-      specifier: ^19.2.0
-      version: 19.2.17
-    '@types/react-dom':
-      specifier: ^19.2.0
-      version: 19.2.3
-    '@vitejs/plugin-react':
-      specifier: ^5.0.4
-      version: 5.2.0
-    class-variance-authority:
-      specifier: ^0.7.1
-      version: 0.7.1
-    clsx:
-      specifier: ^2.1.1
-      version: 2.1.1
-    drizzle-orm:
-      specifier: ^0.45.2
-      version: 0.45.2
-    framer-motion:
-      specifier: ^12.23.24
-      version: 12.42.2
-    lucide-react:
-      specifier: ^0.545.0
-      version: 0.545.0
     react:
       specifier: 19.1.0
       version: 19.1.0
     react-dom:
       specifier: 19.1.0
       version: 19.1.0
-    tailwind-merge:
-      specifier: ^3.3.1
-      version: 3.6.0
-    tailwindcss:
-      specifier: ^4.1.14
-      version: 4.3.2
-    tsx:
-      specifier: ^4.21.0
-      version: 4.23.0
-    vite:
-      specifier: ^7.3.2
-      version: 7.3.6
     zod:
       specifier: ^3.25.76
       version: 3.25.76
@@ -150,6 +102,15 @@ importers:
 
   artifacts/mobile:
     dependencies:
+      '@expo-google-fonts/alegreya':
+        specifier: ^0.4.1
+        version: 0.4.1
+      '@expo-google-fonts/im-fell-english':
+        specifier: ^0.4.0
+        version: 0.4.0
+      '@expo-google-fonts/im-fell-english-sc':
+        specifier: ^0.4.0
+        version: 0.4.0
       expo-av:
         specifier: ^16.0.8
         version: 16.0.8(expo@54.0.35)(react-native-web@0.21.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
@@ -157,9 +118,6 @@ importers:
       '@babel/core':
         specifier: ^7.25.2
         version: 7.29.7
-      '@expo-google-fonts/inter':
-        specifier: ^0.4.0
-        version: 0.4.2
       '@expo/cli':
         specifier: 54.0.23
         version: 54.0.23(expo-router@6.0.24)(expo@54.0.35)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(typescript@5.9.3)
@@ -1214,8 +1172,14 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@expo-google-fonts/inter@0.4.2':
-    resolution: {integrity: sha512-syfiImMaDmq7cFi0of+waE2M4uSCyd16zgyWxdPOY7fN2VBmSLKEzkfbZgeOjJq61kSqPBNNtXjggiQiSD6gMQ==}
+  '@expo-google-fonts/alegreya@0.4.1':
+    resolution: {integrity: sha512-xC8gJ1QXQBISk0xeKROUwviuoOzhYlM2F4alKrwUE4yNYx0TRQUlJDIp9Gnu4H2f8V2Y7T+PLcCuWADAPNPCCg==}
+
+  '@expo-google-fonts/im-fell-english-sc@0.4.0':
+    resolution: {integrity: sha512-mLvek700JF54iW4UEtubPvGiEkNYfDE8ssFimuYtW/3xvynSnSEm7oXlx0DVI3GSXxD6Qi1ejAGdogHHsTzlpw==}
+
+  '@expo-google-fonts/im-fell-english@0.4.0':
+    resolution: {integrity: sha512-3T3k+eFGndWH7RfnKm0R+/AAcUIf1W0WEaPOzVZhffQvqYvz5RDuIxWXjIRXSzQMWk/Ak/Re7pLGXAFHfAxiKw==}
 
   '@expo/cli@54.0.23':
     resolution: {integrity: sha512-km0h72SFfQCmVycH/JtPFTVy69w6Lx1cHNDmfLfQqgKFYeeHTjx7LVDP4POHCtNxFP2UeRazrygJhlh4zz498g==}
@@ -6972,7 +6936,11 @@ snapshots:
   '@esbuild/win32-x64@0.28.1':
     optional: true
 
-  '@expo-google-fonts/inter@0.4.2': {}
+  '@expo-google-fonts/alegreya@0.4.1': {}
+
+  '@expo-google-fonts/im-fell-english-sc@0.4.0': {}
+
+  '@expo-google-fonts/im-fell-english@0.4.0': {}
 
   '@expo/cli@54.0.23(expo-router@6.0.24)(expo@54.0.35)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(typescript@5.9.3)':
     dependencies:

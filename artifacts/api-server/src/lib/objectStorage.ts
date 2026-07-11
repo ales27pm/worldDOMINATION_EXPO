@@ -91,10 +91,16 @@ export class ObjectStorageService {
   async downloadObject(
     file: File,
     cacheTtlSec: number = 3600,
+    opts: { assumePublic?: boolean } = {},
   ): Promise<Response> {
     const [metadata] = await file.getMetadata();
-    const aclPolicy = await getObjectAclPolicy(file);
-    const isPublic = aclPolicy?.visibility === 'public';
+    // Objects found via PUBLIC_OBJECT_SEARCH_PATHS are public by definition
+    // (that is what the search paths mean); they are uploaded via the App
+    // Storage pane or scripts and carry no custom ACL metadata. Only gate on
+    // ACL metadata when the caller does not already know the object is public.
+    const isPublic =
+      opts.assumePublic === true ||
+      (await getObjectAclPolicy(file))?.visibility === 'public';
 
     if (!isPublic) {
       throw new ObjectNotFoundError();

@@ -1,5 +1,10 @@
 import type { DiceTier } from "./types";
 
+/**
+ * Tiered D12 dice system ported from RiskConquest DiceSystem.swift.
+ * The tier color escalates with committed army strength and drives the
+ * hex-die presentation in battle dispatches.
+ */
 export const DICE_FACES: Record<DiceTier, number[]> = {
   white: [1, 1, 1, 1, 2, 2, 2, 3, 3, 4, 5, 6],
   yellow: [1, 1, 2, 2, 2, 2, 3, 3, 4, 4, 5, 6],
@@ -43,6 +48,10 @@ export interface BattleRound {
   defenderLosses: number;
 }
 
+/**
+ * Resolve one classic battle round: attacker rolls up to 3 dice (armies - 1),
+ * defender up to 2, highest pairs compared, defender wins ties.
+ */
 export function resolveBattleRound(attackerArmies: number, defenderArmies: number): BattleRound {
   const attackCount = Math.min(3, attackerArmies - 1);
   const defendCount = Math.min(2, defenderArmies);
@@ -56,7 +65,9 @@ export function resolveBattleRound(attackerArmies: number, defenderArmies: numbe
   let defenderLosses = 0;
   const comparisons = Math.min(attackerRolls.length, defenderRolls.length);
   for (let i = 0; i < comparisons; i += 1) {
-    if ((attackerRolls[i] ?? 0) > (defenderRolls[i] ?? 0)) {
+    const attackRoll = attackerRolls[i] ?? 0;
+    const defendRoll = defenderRolls[i] ?? 0;
+    if (attackRoll > defendRoll) {
       defenderLosses += 1;
     } else {
       attackerLosses += 1;

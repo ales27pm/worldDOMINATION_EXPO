@@ -18,16 +18,19 @@ Files to sync (pure TS, no DOM deps): `types.ts`, `engine.ts`, `ai.ts`, `mapData
 **`battleViews.ts` is the exception** — written by hand for mobile because the web version uses `new Image()` (DOM). Mobile version just exports `battleViewUrl(id)` using `assetUrl()`.
 
 ## Asset layer
-- Object storage bucket: `replit-objstore-b0b71f05-e654-437f-8e5d-5a90d34315e0`
-- Public asset helper: `artifacts/mobile/lib/assetUrl.ts` → `assetUrl(filePath)` → `${EXPO_PUBLIC_API_BASE_URL}/api/storage/public-objects/${filePath}`
-- API server route: `GET /api/storage/public-objects/*filePath` (public, no auth)
-- Assets in bucket: `public/battle-views/*.webp` (48 territories), `public/risk/fireworks/f00–f20.png`, `public/risk/sfx/*.mp3` (20 files), `public/risk/dice/red_1–6.png` + `gold_1–6.png`
+- Bucket (id in `DEFAULT_OBJECT_STORAGE_BUCKET_ID`; never print it) reconciled to exact web parity: 117 objects under `<public-search-path>/public/risk/...` — 21 sfx mp3, 12 dice png, 21 fireworks png, 48 battle-views webp, 11 art png (board, sea parchment, compass, ship, serpent, wood table, crest, laurel, hero, 3 piece sprites), world-map.png.
+- Public asset helper: `artifacts/mobile/lib/assetUrl.ts`; base URL precedence `extra.apiBaseUrl` → `EXPO_PUBLIC_API_BASE_URL` → `EXPO_PUBLIC_DOMAIN` (https prepended). No `__DEV__` gating — same code path in dev and prod builds.
+- API server route: `GET /api/storage/public-objects/*filePath` (public, no auth). `artifacts/mobile/lib/art.ts` centralizes art URLs (`ART`, `PIECE_ART`).
+
+**ACL pitfall:** objects uploaded via the storage pane have no ACL metadata, so the SDK's `downloadObject` rejected them even on the public route. Fix: `downloadObject` accepts `{ assumePublic: true }`, which the public route passes *after* resolving the object inside the public search paths (so it stays safe). Any new public-serving route must do the same.
 
 ## Sound system
-`artifacts/mobile/lib/sfx.ts` — expo-av wrapper.
-- `playSfx(name, { volume?, maxMs? }): Promise<() => void>`
-- `playRandomSfx(names[], options): Promise<() => void>`
-- **expo-av deprecation:** Will be removed in SDK 54; migrate to `expo-audio` when upgrading SDK. Non-blocking for now.
+`artifacts/mobile/lib/sfx.ts` — faithful expo-av port of the web engine (21 samples).
+- `playSfx(name, { volume?, throttleMs?, maxMs? })` returns a **synchronous** stop handle (fade-out ~320ms). Never make it return a Promise — BattleView cleanup pushes handles into a ref synchronously.
+- Design: one warm pooled instance per sample (`preloadSfx`) + transient instances for overlap; mute persisted to AsyncStorage key `risk2.sound` ("off"/"on"); `useSfxMuted` via useSyncExternalStore; `playsInSilentModeIOS: true`.
+- **Race lessons (from code review):** (1) mute state must be re-applied after a sound's async load resolves — sounds mid-startup aren't in the active set when the global toggle runs; (2) preloads need an in-flight map or concurrent calls leak duplicate `Audio.Sound` instances; (3) treat non-loaded error status as terminal cleanup.
+- `hooks/useGameSounds.ts` ports the web sound director: `playActionSound(action)` for UI cues (wrap the reducer dispatch; AI orders use rawDispatch to skip cues) + state-transition effects for battle/fanfare/trumpet/chime.
+- **expo-av deprecation:** removed in SDK 54; migrate to `expo-audio` when upgrading SDK. Non-blocking for now.
 
 ## Components added / updated
 - `components/game/RiskDie.tsx` — authentic RISK II die sprites from object storage, tier tinting via `tintColor`
@@ -84,6 +87,11 @@ React Native uses `textShadow: "0 0 12px #color"` (string shorthand, web-style).
 - `winner: number | null`
 `normalizeState()` handles backward-compat for saves missing `history`.
 
+## Fonts & theme (web parity)
+- Fonts via @expo-google-fonts: Alegreya (body, 400–800 + italics), IM Fell English (map/taglines, + italic), IM Fell English SC (display). Tokens in `constants/typography.ts` (`Fonts`, `trackingImperial(fontSize)` = 0.22em, `TextShadows`). Inter was fully removed — don't reintroduce it.
+- Palette in `constants/colors.ts` re-valued to the web build: walnut bg #251a13, parchment text #ede0c0, gold #debe73, parchment sea #e7d8b1, ink stroke #362516, plus parchment scale / ink / gold / crimson ramps. Legacy key names kept so existing components didn't need edits.
+
 ## Outstanding gaps
-1. SQLite persistence — web uses sql.js+IndexedDB; mobile still on AsyncStorage
-2. Premium/paywall — RevenueCat mobile SDK (`react-native-purchases`) not integrated
+1. SQLite persistence (records/stats/high-scores) — web uses sql.js+IndexedDB; mobile still on AsyncStorage. Queued as its own task.
+2. Visual/UX fidelity pass (screen-by-screen parity, e.g. menu title sizing) — queued as its own task.
+3. Premium/paywall (RevenueCat) — **user cancelled this work; do not reintroduce it.**

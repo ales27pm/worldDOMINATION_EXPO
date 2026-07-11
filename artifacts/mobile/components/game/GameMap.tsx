@@ -10,11 +10,11 @@ import type { GameState, TerritoryId } from '@/game/types';
 import { Colors } from '@/constants/colors';
 import { assetUrl } from '@/lib/assetUrl';
 
-// ─── Piece sprites ────────────────────────────────────────────────────────────
-const PIECE_INFANTRY = assetUrl('public/pieces/infantry.png');
-const PIECE_CAVALRY  = assetUrl('public/pieces/cavalry.png');
-const PIECE_CANNON   = assetUrl('public/pieces/cannon.png');
-const MAP_PARCHMENT  = assetUrl('public/map/parchment.png');
+// ─── Piece sprites (web PIECE_ART miniatures, mirrored to object storage) ────
+const PIECE_INFANTRY = assetUrl('public/risk/art/piece-infantry.png');
+const PIECE_CAVALRY  = assetUrl('public/risk/art/piece-cavalry.png');
+const PIECE_CANNON   = assetUrl('public/risk/art/piece-artillery.png');
+const MAP_PARCHMENT  = assetUrl('public/risk/art/sea-parchment.png');
 
 function pieceForArmies(armies: number): string {
   if (armies >= 15) return PIECE_CANNON;

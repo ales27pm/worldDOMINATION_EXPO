@@ -2,6 +2,11 @@ import { shuffle } from "./cards";
 import { CONTINENTS, continentTerritories } from "./mapData";
 import type { ContinentId, GameState, Mission, PlayerState } from "./types";
 
+/**
+ * The Classic RISK II mission deck (manual, Chapter 6):
+ * 8x destroy a named player's color, 4 fixed continent pairs,
+ * "occupy 24 territories" and "conquer 18 territories with 2 armies each".
+ */
 type MissionTemplate =
   | { kind: "destroy" }
   | { kind: "pair"; continents: [ContinentId, ContinentId] }
@@ -22,6 +27,7 @@ function buildClassicDeck(): MissionTemplate[] {
   return shuffle(deck);
 }
 
+/** Deal one secret mission per player from the authentic Classic RISK II deck. */
 export function generateMissions(players: PlayerState[]): Mission[] {
   const deck = buildClassicDeck();
   const usedTargets = new Set<number>();
@@ -56,10 +62,10 @@ export function missionText(mission: Mission, players: PlayerState[]): string {
     case "occupyTerritoryCount":
       return `Occupy ${mission.count} territories of your choice.`;
     case "occupyFortified":
-      return `Conquer ${mission.count} territories and occupy each with at least ${mission.minArmies} armies.`;
+      return `Conquer ${mission.count} territories of your choice and occupy each with at least ${mission.minArmies} armies.`;
     case "destroyPlayer": {
       const target = players.find((p) => p.id === mission.targetPlayerId);
-      return `Destroy all troops belonging to ${target?.name ?? "your rival"}. If they fall to another, occupy ${mission.fallbackCount} territories.`;
+      return `Destroy all ${target?.colorName ?? ""} troops belonging to ${target?.name ?? "your rival"}. If they fall to another, occupy ${mission.fallbackCount} territories.`;
     }
   }
 }
@@ -84,7 +90,8 @@ export function missionAchieved(mission: Mission, state: GameState, playerId: nu
     }
     case "destroyPlayer": {
       const target = state.players[mission.targetPlayerId];
-      if (!target || target.alive) return false;
+      if (!target) return false;
+      if (target.alive) return false;
       if (target.killedBy === playerId) return true;
       return ownedCount >= mission.fallbackCount;
     }
