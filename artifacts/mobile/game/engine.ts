@@ -840,6 +840,8 @@ export function gameReducer(previous: GameState, action: GameAction): GameState 
         conquered,
         attackerTier: tierForAttacker(Math.max(1, attackerArmies - 1)),
         defenderTier: tierForDefender(Math.max(1, defenderArmies)),
+        attackerArmiesBefore: from.armies,
+        defenderArmiesBefore: to.armies,
       };
 
       if (conquered) {

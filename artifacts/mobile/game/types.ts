@@ -227,6 +227,10 @@ export interface BattleReport {
   conquered: boolean;
   attackerTier: DiceTier;
   defenderTier: DiceTier;
+  /** Garrison sizes when the assault began — for the battle-scene plaques.
+      Absent in reports saved before this field existed. */
+  attackerArmiesBefore?: number;
+  defenderArmiesBefore?: number;
 }
 
 export interface PendingOccupy {

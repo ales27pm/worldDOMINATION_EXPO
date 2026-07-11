@@ -8,6 +8,7 @@ import { ALLIANCE_LEVEL_INFO } from '@/game/types';
 import type { AllianceLevel, GameAction, GameState } from '@/game/types';
 import { missionText } from '@/game/missions';
 import { Fireworks } from './Fireworks';
+import { StatsScreen } from './StatsScreen';
 
 // ─── Handoff Overlay ──────────────────────────────────────────────────────────
 export function HandoffOverlay({ game, dispatch }: { game: GameState; dispatch: (a: GameAction) => void }) {
@@ -241,6 +242,7 @@ export function ProposalOverlay({ game, dispatch }: { game: GameState; dispatch:
 
 // ─── Victory Overlay ──────────────────────────────────────────────────────────
 export function VictoryOverlay({ game, onExit }: { game: GameState; onExit: () => void }) {
+  const [showStats, setShowStats] = useState(false);
   if (game.phase !== 'gameOver') return null;
   const winner = game.winner !== null ? game.players[game.winner] : null;
   const human = game.players.find((p) => p.isHuman);
@@ -269,10 +271,14 @@ export function VictoryOverlay({ game, onExit }: { game: GameState; onExit: () =
             />
           </View>
 
+          <Pressable onPress={() => setShowStats(true)} style={styles.statsBtn}>
+            <Text style={styles.statsBtnText}>CAMPAIGN STATISTICS</Text>
+          </Pressable>
           <Pressable onPress={onExit} style={styles.primaryBtn}>
             <Text style={styles.primaryBtnText}>RETURN TO MAIN MENU</Text>
           </Pressable>
         </View>
+        <StatsScreen game={game} visible={showStats} onClose={() => setShowStats(false)} />
       </View>
     </Modal>
   );
@@ -392,6 +398,8 @@ const styles = StyleSheet.create({
   statLabel: { color: Colors.textMuted, fontFamily: 'Alegreya_400Regular', fontSize: 10, letterSpacing: 1 },
 
   // Common buttons
+  statsBtn: { borderWidth: 1, borderColor: Colors.gold, paddingVertical: 12, alignItems: 'center' },
+  statsBtnText: { color: Colors.gold, fontFamily: 'Alegreya_700Bold', fontSize: 13, letterSpacing: 2 },
   primaryBtn: { backgroundColor: Colors.gold, paddingVertical: 14, alignItems: 'center' },
   primaryBtnText: { color: Colors.bg, fontFamily: 'Alegreya_700Bold', fontSize: 14, letterSpacing: 3 },
 

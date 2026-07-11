@@ -32,8 +32,9 @@ Files to sync (pure TS, no DOM deps): `types.ts`, `engine.ts`, `ai.ts`, `mapData
 - `hooks/useGameSounds.ts` ports the web sound director: `playActionSound(action)` for UI cues (wrap the reducer dispatch; AI orders use rawDispatch to skip cues) + state-transition effects for battle/fanfare/trumpet/chime.
 
 ## Components added / updated
-- `components/game/RiskDie.tsx` — authentic RISK II die sprites from object storage, tier tinting via `tintColor`
-- `components/game/BattleView.tsx` — cinematic battle overlay (Modal); auto-rolls after a beat, auto-dismisses, tap skips. Which battles get a scene is decided by `shouldShowBattleScene` in `lib/battleScenes.ts` — change policy there, not in the component.
+- `components/game/RiskDie.tsx` — layered classic dice: neutral `body.png` tinted per rank via `tintColor` prop + untinted pip overlay (white pips on coloured bodies, dark pips on ivory). All 3-D modelling lives in the sprite alpha.
+- `components/game/BattleView.tsx` — cinematic battle overlay (Modal); auto-rolls after a beat, auto-dismisses, tap skips. Which battles get a scene is decided by `shouldShowBattleScene` in `lib/battleScenes.ts` — change policy there, not in the component. Visual design is the user-chosen "Faithful Classic" (Jul 2026): original-style player-coloured plaques (count roundel → dice tray → territory name bar), svg attack arrow, PieceIcon troop formations, light vignette, plain system-font bold type (deliberately NOT the parchment fonts — don't "fix" it to Alegreya/IM Fell).
+- `components/game/StatsScreen.tsx` — post-game census graph (territories/armies per round from `GameState.history`), opened from VictoryOverlay's CAMPAIGN STATISTICS button. `BattleReport` carries optional `attackerArmiesBefore`/`defenderArmiesBefore` for the plaque roundels — old saves lack them and the roundels hide; keep new BattleReport fields optional for the same reason.
 - `components/game/Fireworks.tsx` — 21-frame sprite animation, 5 staggered bursts, loops. Added to `VictoryOverlay` when `playerWon`.
 - `components/game/BattleReport.tsx` — inline card; uses `RiskDie` for dice.
 - `components/game/GameMap.tsx` — complete rewrite with pan/pinch camera + view modes (see below).
@@ -74,7 +75,7 @@ Files to sync (pure TS, no DOM deps): `types.ts`, `engine.ts`, `ai.ts`, `mapData
 - `game.tsx` detects tournament via `game.setup.tournamentGame !== undefined` and routes victory exit to `/tournament`.
 
 ## textShadow style API
-React Native uses `textShadow: "0 0 12px #color"` (string shorthand, web-style). The old `textShadowColor`/`textShadowOffset`/`textShadowRadius` props are deprecated and generate warnings.
+Use the classic three-prop form (`textShadowColor`/`textShadowOffset`/`textShadowRadius`). **Why:** the `textShadow: "0 1px 3px #color"` string shorthand fails tsc on this project's installed RN types (verified Jul 2026) and the whole codebase uses the three-prop form; any runtime deprecation warning is cosmetic. Don't convert styles to the shorthand until the RN/types upgrade actually accepts it.
 
 ## State shape (engine.ts as of Jul 2026)
 `GameState` now includes:
