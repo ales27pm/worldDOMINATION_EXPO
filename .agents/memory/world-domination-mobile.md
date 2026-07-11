@@ -88,5 +88,9 @@ React Native uses `textShadow: "0 0 12px #color"` (string shorthand, web-style).
 - Fonts via @expo-google-fonts: Alegreya (body, 400–800 + italics), IM Fell English (map/taglines, + italic), IM Fell English SC (display). Tokens in `constants/typography.ts` (`Fonts`, `trackingImperial(fontSize)` = 0.22em, `TextShadows`). Inter was fully removed — don't reintroduce it.
 - Palette in `constants/colors.ts` re-valued to the web build: walnut bg #251a13, parchment text #ede0c0, gold #debe73, parchment sea #e7d8b1, ink stroke #362516, plus parchment scale / ink / gold / crimson ramps. Legacy key names kept so existing components didn't need edits.
 
+## Expo Go native-module crash after dependency/config changes
+`ViewManagerAdapter_ExpoXxx ... must be a function (received undefined)` on device (e.g. for `expo-linear-gradient`) after unrelated JS changes is usually a stale Metro/Expo bundler cache, not a real linking bug. Fix: stop the workflow, `rm -rf .expo node_modules/.cache` in `artifacts/mobile`, restart. Confirmed fix on iPhone/Expo Go, Jul 2026.
+
 ## Outstanding gaps
 1. Premium/paywall (RevenueCat) — **user cancelled this work; do not reintroduce it.**
+2. expo-audio battle sound engine (`lib/sfx.ts`) verified on physical iPhone and Android devices (Jul 2026) — mute, overlapping SFX, ambience fade-out, and repeated-battle stability all confirmed on both platforms.
