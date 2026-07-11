@@ -110,6 +110,8 @@ function startTurn(state: GameState): void {
   state.mustTrade = player.cards.length >= 5;
   state.pendingOccupy = null;
   state.proposalsMade = [];
+  state.fortifyUsed = false;
+  state.deployLog = [];
   player.conqueredThisTurn = false;
   state.awaitingHandoff = player.isHuman && humansCount(state.players) > 1;
   addLog(state, `${player.name} musters ${state.reinforcementsRemaining} reinforcements.`, "info");
@@ -185,6 +187,7 @@ function cloneState(state: GameState): GameState {
     proposalsMade: [...state.proposalsMade],
     initialRemaining: [...state.initialRemaining],
     history: [...state.history],
+    deployLog: [...state.deployLog],
     election: state.election
       ? {
           ...state.election,
@@ -207,6 +210,8 @@ export function normalizeState(raw: GameState): GameState {
     initialRemaining: raw.initialRemaining ?? raw.players.map(() => 0),
     history: raw.history ?? [],
     election: raw.election ?? null,
+    fortifyUsed: raw.fortifyUsed ?? false,
+    deployLog: raw.deployLog ?? [],
     players: raw.players.map((p) => ({ ...p, grudges: p.grudges ?? {} })),
   };
 }
@@ -300,6 +305,8 @@ export function createGame(setup: GameSetup): GameState {
     initialRemaining: players.map(() => initial),
     history: [],
     election: null,
+    fortifyUsed: false,
+    deployLog: [],
   };
   addLog(state, `The campaign of MDCCCXII begins — ${OBJECTIVE_INFO[setup.objective].name}.`, "gold");
   if (allocation === "grab") {
@@ -754,9 +761,23 @@ export function gameReducer(previous: GameState, action: GameAction): GameState 
       if (count <= 0) return previous;
       setTerritory(state, action.territory, { ...territory, armies: territory.armies + count });
       state.reinforcementsRemaining -= count;
+      state.deployLog = [...state.deployLog, { territory: action.territory, count }];
       if (state.reinforcementsRemaining === 0) {
         state.phase = "attack";
+        state.deployLog = [];
       }
+      return state;
+    }
+
+    case "UNDO_DEPLOY": {
+      if (state.phase !== "reinforcement" || state.awaitingHandoff) return previous;
+      const last = state.deployLog[state.deployLog.length - 1];
+      if (!last) return previous;
+      const territory = state.territories[last.territory];
+      if (territory.owner !== player.id || territory.armies - last.count < 1) return previous;
+      setTerritory(state, last.territory, { ...territory, armies: territory.armies - last.count });
+      state.reinforcementsRemaining += last.count;
+      state.deployLog = state.deployLog.slice(0, -1);
       return state;
     }
 
@@ -878,7 +899,9 @@ export function gameReducer(previous: GameState, action: GameAction): GameState 
     }
 
     case "FORTIFY": {
-      if (state.phase !== "fortify" || state.awaitingHandoff) return previous;
+      // The move no longer ends the turn — the player (or AI) closes it with
+      // an explicit END_TURN, so a mis-tap can't burn the whole turn.
+      if (state.phase !== "fortify" || state.awaitingHandoff || state.fortifyUsed) return previous;
       const from = state.territories[action.from];
       const to = state.territories[action.to];
       if (from.owner !== player.id || to.owner !== player.id) return previous;
@@ -886,8 +909,8 @@ export function gameReducer(previous: GameState, action: GameAction): GameState 
       if (count <= 0) return previous;
       setTerritory(state, action.from, { ...from, armies: from.armies - count });
       setTerritory(state, action.to, { ...to, armies: to.armies + count });
+      state.fortifyUsed = true;
       addLog(state, `${player.name} manoeuvres ${count} armies to ${action.to}.`, "info");
-      endTurn(state);
       return state;
     }
 

@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Modal, ScrollView } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Animated, View, Text, StyleSheet, Pressable, Modal, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/colors';
+import { useBattleSceneVisible } from '@/lib/battleScenes';
 import { TERRITORY_MAP } from '@/game/mapData';
 import { ALLIANCE_LEVEL_INFO } from '@/game/types';
 import type { AllianceLevel, GameAction, GameState } from '@/game/types';
@@ -39,15 +40,16 @@ export function HandoffOverlay({ game, dispatch }: { game: GameState; dispatch: 
 }
 
 // ─── Occupy Overlay ───────────────────────────────────────────────────────────
+const OCCUPY_AUTO_MS = 2400;
+
 export function OccupyOverlay({ game, dispatch }: { game: GameState; dispatch: (a: GameAction) => void }) {
   const pending = game.pendingOccupy;
   if (!pending) return null;
   // AI generals resolve their own occupations — never flash the sheet for them.
   if (!game.players[game.currentPlayer]?.isHuman) return null;
   return (
-    <OccupySheet
-      // Re-key per conquest so the count re-initializes to the fresh range —
-      // the sheet is otherwise permanently stuck at its first-mount state.
+    <OccupyFlow
+      // Re-key per conquest so countdown/adjust state resets for each one.
       key={`${pending.from}-${pending.to}-${pending.min}-${pending.max}`}
       game={game}
       pending={pending}
@@ -56,7 +58,13 @@ export function OccupyOverlay({ game, dispatch }: { game: GameState; dispatch: (
   );
 }
 
-function OccupySheet({
+/**
+ * Post-conquest flow, tuned to keep the campaign moving:
+ * - no real choice (min === max): the column marches instantly, no UI;
+ * - otherwise a non-blocking toast counts down to "advance in force",
+ *   with ADJUST opening the classic stepper sheet.
+ */
+function OccupyFlow({
   game,
   pending,
   dispatch,
@@ -64,6 +72,90 @@ function OccupySheet({
   game: GameState;
   pending: NonNullable<GameState['pendingOccupy']>;
   dispatch: (a: GameAction) => void;
+}) {
+  const [adjusting, setAdjusting] = useState(false);
+  const sceneVisible = useBattleSceneVisible();
+  const firedRef = useRef(false);
+
+  const commit = useCallback(
+    (count: number) => {
+      if (firedRef.current) return;
+      firedRef.current = true;
+      dispatch({ type: 'OCCUPY', count });
+    },
+    [dispatch],
+  );
+
+  const noChoice = pending.min >= pending.max;
+
+  // March immediately when the rules leave no decision to make.
+  useEffect(() => {
+    if (noChoice) commit(pending.max);
+  }, [noChoice, commit, pending.max]);
+
+  // Countdown to advancing in force — waits for the battle scene to clear
+  // so the player actually sees the toast before it fires.
+  useEffect(() => {
+    if (noChoice || adjusting || sceneVisible) return;
+    const timer = setTimeout(() => commit(pending.max), OCCUPY_AUTO_MS);
+    return () => clearTimeout(timer);
+  }, [noChoice, adjusting, sceneVisible, commit, pending.max]);
+
+  if (noChoice) return null;
+
+  if (adjusting) {
+    return <OccupySheet game={game} pending={pending} onAdvance={commit} />;
+  }
+
+  if (sceneVisible) return null; // the toast waits behind the battle scene
+
+  const toName = TERRITORY_MAP[pending.to]?.name ?? pending.to;
+  return (
+    <View style={styles.toastWrap} pointerEvents="box-none">
+      <View style={styles.toast}>
+        <View style={styles.toastTextBlock}>
+          <Text style={styles.toastTitle}>
+            Advancing <Text style={styles.bold}>{pending.max}</Text> into{' '}
+            <Text style={styles.bold}>{toName}</Text>
+          </Text>
+          <CountdownBar />
+        </View>
+        <Pressable
+          onPress={() => setAdjusting(true)}
+          style={styles.toastBtn}
+          accessibilityLabel="Adjust advancing armies"
+        >
+          <Text style={styles.toastBtnText}>ADJUST</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function CountdownBar() {
+  const anim = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    Animated.timing(anim, {
+      toValue: 0,
+      duration: OCCUPY_AUTO_MS,
+      useNativeDriver: true,
+    }).start();
+  }, [anim]);
+  return (
+    <View style={styles.countdownTrack}>
+      <Animated.View style={[styles.countdownFill, { transform: [{ scaleX: anim }] }]} />
+    </View>
+  );
+}
+
+function OccupySheet({
+  game,
+  pending,
+  onAdvance,
+}: {
+  game: GameState;
+  pending: NonNullable<GameState['pendingOccupy']>;
+  onAdvance: (count: number) => void;
 }) {
   // Default to advancing in force.
   const [count, setCount] = useState(pending.max);
@@ -95,7 +187,7 @@ function OccupySheet({
             Leave {fromArmies - count} armies in {fromName}
           </Text>
           <Pressable
-            onPress={() => dispatch({ type: 'OCCUPY', count })}
+            onPress={() => onAdvance(count)}
             style={styles.primaryBtn}
           >
             <Text style={styles.primaryBtnText}>ADVANCE</Text>
@@ -262,6 +354,20 @@ const styles = StyleSheet.create({
   stepBtnText: { color: Colors.text, fontFamily: 'Alegreya_700Bold', fontSize: 22 },
   stepCount: { color: Colors.gold, fontFamily: 'Alegreya_700Bold', fontSize: 36, minWidth: 56, textAlign: 'center' },
   stepRange: { color: Colors.textMuted, fontFamily: 'Alegreya_400Regular', fontSize: 12 },
+
+  // Occupy toast (non-blocking)
+  toastWrap: { position: 'absolute', left: 0, right: 0, bottom: 178, alignItems: 'center', zIndex: 30 },
+  toast: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: 'rgba(21,13,9,0.94)', borderWidth: 1, borderColor: 'rgba(222,190,115,0.5)',
+    paddingVertical: 10, paddingLeft: 14, paddingRight: 10, maxWidth: '92%',
+  },
+  toastTextBlock: { gap: 6, flexShrink: 1 },
+  toastTitle: { color: Colors.text, fontFamily: 'Alegreya_500Medium', fontSize: 13 },
+  countdownTrack: { height: 3, backgroundColor: 'rgba(222,190,115,0.18)', overflow: 'hidden', borderRadius: 2 },
+  countdownFill: { height: 3, backgroundColor: Colors.gold, borderRadius: 2 },
+  toastBtn: { borderWidth: 1, borderColor: Colors.gold, paddingVertical: 8, paddingHorizontal: 12 },
+  toastBtnText: { color: Colors.gold, fontFamily: 'Alegreya_700Bold', fontSize: 12, letterSpacing: 2 },
 
   // Proposal
   proposalTitle: { color: Colors.goldDim, fontFamily: 'Alegreya_600SemiBold', fontSize: 11, letterSpacing: 3 },

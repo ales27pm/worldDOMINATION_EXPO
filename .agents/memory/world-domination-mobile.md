@@ -33,7 +33,7 @@ Files to sync (pure TS, no DOM deps): `types.ts`, `engine.ts`, `ai.ts`, `mapData
 
 ## Components added / updated
 - `components/game/RiskDie.tsx` — authentic RISK II die sprites from object storage, tier tinting via `tintColor`
-- `components/game/BattleView.tsx` — cinematic battle overlay (Modal); watches `game.lastBattle`, fires for human battles only. Press-to-roll → dice + SFX + auto-dismiss (3.2s).
+- `components/game/BattleView.tsx` — cinematic battle overlay (Modal); auto-rolls after a beat, auto-dismisses, tap skips. Which battles get a scene is decided by `shouldShowBattleScene` in `lib/battleScenes.ts` — change policy there, not in the component.
 - `components/game/Fireworks.tsx` — 21-frame sprite animation, 5 staggered bursts, loops. Added to `VictoryOverlay` when `playerWon`.
 - `components/game/BattleReport.tsx` — inline card; uses `RiskDie` for dice.
 - `components/game/GameMap.tsx` — complete rewrite with pan/pinch camera + view modes (see below).
@@ -82,7 +82,13 @@ React Native uses `textShadow: "0 0 12px #color"` (string shorthand, web-style).
 - `battlesFought: number`
 - `winReason: string | null`
 - `winner: number | null`
-`normalizeState()` handles backward-compat for saves missing `history`.
+- `fortifyUsed: boolean`, `deployLog: DeployLogEntry[]` (turn-flow redesign)
+**Any new GameState field must get a default in `normalizeState()` AND be copied in `cloneState()`** — saves are long-lived JSON; missing either breaks old saves or silently drops state.
+
+## Turn-flow conventions (Jul 2026 redesign)
+- Deploy = tap-to-place (DEPLOY count:1 per map tap) + UNDO_DEPLOY (reads `deployLog`); FORTIFY sets `fortifyUsed`, **never ends the turn** — human and AI must dispatch END_TURN explicitly (`game/ai.ts` does when `fortifyUsed`).
+- Battle scene pacing is a persisted user setting (`lib/battleScenes.ts`, AsyncStorage `risk2.battleScenes`, full/fast/off). Human-defender scenes only when a territory is lost or a capital is contested; everything else is percussion via `useGameSounds`.
+- Overlay sequencing: BattleView publishes visibility through the scene-visibility store in `lib/battleScenes.ts`; the occupy auto-advance toast (`OccupyFlow` in GameOverlays) gates its countdown on it. New overlays that could collide with the battle Modal should use the same store instead of guessing with timers.
 
 ## Fonts & theme (web parity)
 - Fonts via @expo-google-fonts: Alegreya (body, 400–800 + italics), IM Fell English (map/taglines, + italic), IM Fell English SC (display). Tokens in `constants/typography.ts` (`Fonts`, `trackingImperial(fontSize)` = 0.22em, `TextShadows`). Inter was fully removed — don't reintroduce it.

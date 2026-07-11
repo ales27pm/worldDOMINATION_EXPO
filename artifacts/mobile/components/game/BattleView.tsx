@@ -12,11 +12,16 @@ import { Colors } from "@/constants/colors";
 import { GradientFill } from "@/components/GradientFill";
 import { battleViewSource } from "@/game/battleViews";
 import { playSfx, playRandomSfx, type SfxName } from "@/lib/sfx";
+import {
+  SCENE_TIMINGS,
+  setBattleSceneVisible,
+  shouldShowBattleScene,
+  useBattleSceneMode,
+} from "@/lib/battleScenes";
 import { TERRITORY_MAP } from "@/game/mapData";
 import type { BattleReport, GameState } from "@/game/types";
 import { RiskDie } from "./RiskDie";
 
-const RESULT_HOLD_MS = 3600;
 const { width: SW, height: SH } = Dimensions.get("window");
 
 interface Props {
@@ -29,6 +34,7 @@ interface Props {
  * Only shown for battles involving the human commander.
  */
 export function BattleView({ game }: Props) {
+  const sceneMode = useBattleSceneMode();
   const [scene, setScene] = useState<BattleReport | null>(null);
   const [phase, setPhase] = useState<"ready" | "rolled">("ready");
   const lastReportRef = useRef<BattleReport | null>(null);
@@ -49,30 +55,33 @@ export function BattleView({ game }: Props) {
     rolledRef.current = false;
     clearAll();
     setScene(null);
+    setBattleSceneVisible(false);
   }, [clearAll]);
 
-  // Watch for a new battle
+  // Watch for a new battle — the shared policy decides whether it earns a
+  // scene (player assaults always; AI assaults on the player only when
+  // ground is lost or a capital is contested; never with scenes off).
   useEffect(() => {
     const report = game.lastBattle;
     if (!report || report === lastReportRef.current) return;
     lastReportRef.current = report;
 
-    const attacker = game.players[report.attacker];
-    const defender = game.players[report.defender];
-    // Only show for human-vs-AI or AI-vs-human battles
-    if (!attacker?.isHuman && !defender?.isHuman) return;
+    if (!shouldShowBattleScene(game, report, sceneMode)) return;
 
     rolledRef.current = false;
     clearAll();
     setPhase("ready");
     setScene(report);
-  }, [game.lastBattle, game.players, clearAll]);
+    setBattleSceneVisible(true);
+  }, [game, sceneMode, clearAll]);
 
   const rollDice = useCallback(() => {
     if (!scene || rolledRef.current) return;
     rolledRef.current = true;
     setPhase("rolled");
     clearAll();
+
+    const timings = SCENE_TIMINGS[sceneMode === "full" ? "full" : "fast"];
 
     // Sound: dice roll → volley/cannon → optional trumpet
     stopFns.current.push(playSfx("dice_roll", { volume: 0.62 }));
@@ -85,21 +94,35 @@ export function BattleView({ game }: Props) {
         ? ["volley_long", "roar", "cannon_a"]
         : ["volley_short", "cannon_b", "cannon_c", "clash_c"];
       stopFns.current.push(playRandomSfx(names, { volume: 0.45 }));
-    }, 260);
+    }, timings.volleyAt);
     soundTimers.current.push(t1);
 
     if (scene.conquered) {
       const t2 = setTimeout(() => {
         stopFns.current.push(playSfx("trumpet", { volume: 0.5 }));
-      }, 1280);
+      }, timings.trumpetAt);
       soundTimers.current.push(t2);
     }
 
-    dismissTimer.current = setTimeout(dismiss, RESULT_HOLD_MS);
-  }, [scene, clearAll, dismiss]);
+    dismissTimer.current = setTimeout(dismiss, timings.hold);
+  }, [scene, sceneMode, clearAll, dismiss]);
+
+  // The dice roll themselves after a short beat — no CTA tap required.
+  useEffect(() => {
+    if (!scene || phase !== "ready") return;
+    const timings = SCENE_TIMINGS[sceneMode === "full" ? "full" : "fast"];
+    const timer = setTimeout(rollDice, timings.preRoll);
+    return () => clearTimeout(timer);
+  }, [scene, phase, sceneMode, rollDice]);
 
   // Cleanup on unmount
-  useEffect(() => () => clearAll(), [clearAll]);
+  useEffect(
+    () => () => {
+      clearAll();
+      setBattleSceneVisible(false);
+    },
+    [clearAll],
+  );
 
   if (!scene) return null;
 
@@ -179,13 +202,7 @@ export function BattleView({ game }: Props) {
               <Text style={styles.losses}>-{scene.defenderLosses}</Text>
             </View>
           </View>
-        ) : (
-          /* Press-to-roll CTA */
-          <Pressable style={styles.rollCta} onPress={rollDice}>
-            <Text style={styles.rollCtaText}>ROLL DICE</Text>
-            <Text style={styles.rollCtaHint}>Tap to engage</Text>
-          </Pressable>
-        )}
+        ) : null}
 
         {/* Result banner */}
         {phase === "rolled" && (
@@ -193,13 +210,15 @@ export function BattleView({ game }: Props) {
             <Text style={[styles.resultText, scene.conquered ? styles.conquered : styles.repelled]}>
               {scene.conquered ? "TERRITORY TAKEN" : "ATTACK REPELLED"}
             </Text>
+            <Text style={styles.skipHint}>tap to continue</Text>
           </View>
         )}
 
-        {/* Skip tap (after roll) */}
-        {phase === "rolled" && (
-          <Pressable style={StyleSheet.absoluteFill} onPress={dismiss} />
-        )}
+        {/* Tap anywhere: bring the roll forward, or dismiss the result. */}
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={phase === "ready" ? rollDice : dismiss}
+        />
       </View>
     </Modal>
   );
@@ -265,25 +284,12 @@ const styles = StyleSheet.create({
     fontSize: 22,
   },
   vs: { color: Colors.gold, fontSize: 28 },
-  rollCta: {
-    borderWidth: 2,
-    borderColor: Colors.gold,
-    paddingVertical: 20,
-    paddingHorizontal: 48,
-    alignItems: "center",
-    gap: 6,
-  },
-  rollCtaText: {
-    color: Colors.gold,
-    fontFamily: "Alegreya_700Bold",
-    fontSize: 22,
-    letterSpacing: 4,
-  },
-  rollCtaHint: {
+  skipHint: {
     color: Colors.goldDim,
     fontFamily: "Alegreya_400Regular",
-    fontSize: 12,
+    fontSize: 11,
     letterSpacing: 2,
+    marginTop: 6,
   },
   resultBanner: {
     position: "absolute",

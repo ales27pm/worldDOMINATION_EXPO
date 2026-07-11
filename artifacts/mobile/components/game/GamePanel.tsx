@@ -6,12 +6,19 @@ import { TERRITORY_MAP } from '@/game/mapData';
 import { ALLIANCE_LEVEL_INFO } from '@/game/types';
 import type { GameAction, GameState, TerritoryId } from '@/game/types';
 
+/** A fortify move staged on the map, awaiting the MARCH confirmation. */
+export interface StagedMove {
+  from: TerritoryId;
+  to: TerritoryId;
+  count: number;
+}
+
 interface Props {
   game: GameState;
   selected: TerritoryId | null;
   targets: Set<TerritoryId>;
-  deployAmount: number;
-  setDeployAmount: (n: number) => void;
+  stagedMove: StagedMove | null;
+  setStagedMove: (m: StagedMove | null) => void;
   allOut: boolean;
   setAllOut: (v: boolean) => void;
   dispatch: (a: GameAction) => void;
@@ -21,7 +28,7 @@ interface Props {
 }
 
 export default function GamePanel({
-  game, selected, targets, deployAmount, setDeployAmount,
+  game, selected, targets, stagedMove, setStagedMove,
   allOut, setAllOut, dispatch, onOpenCards, onOpenRoster, onOpenLog,
 }: Props) {
   const player = game.players[game.currentPlayer];
@@ -41,9 +48,11 @@ export default function GamePanel({
       case 'reinforcement':
         if (game.mustTrade) return '⚠ You must trade cards before deploying.';
         if (game.awaitingHandoff) return 'Waiting for handoff confirmation.';
-        return `Deploy ${game.reinforcementsRemaining} armies — tap your territory, then use +/− to place.`;
+        return `Deploy ${game.reinforcementsRemaining} armies — every tap on your territory places one.`;
       case 'attack': return 'Select your territory, then tap an enemy to attack.';
-      case 'fortify': return 'Move armies from one territory to an adjacent one, then end turn.';
+      case 'fortify':
+        if (game.fortifyUsed) return 'Tactical move complete — end the turn.';
+        return 'One tactical move: select a territory, then tap a neighbour.';
       default: return '';
     }
   };
@@ -80,45 +89,30 @@ export default function GamePanel({
     }
 
     if (phase === 'reinforcement') {
+      const remaining = game.reinforcementsRemaining;
+      const canUndo = (game.deployLog?.length ?? 0) > 0;
       return (
         <View style={styles.actionGroup}>
           {game.mustTrade ? (
             <ActionBtn label="Open Cards (must trade)" gold onPress={onOpenCards} />
           ) : (
             <>
-              {selected && selectedOwned && game.reinforcementsRemaining > 0 && (
-                <View style={styles.deployRow}>
-                  <Stepper
-                    value={deployAmount}
-                    min={1}
-                    max={game.reinforcementsRemaining}
-                    onChange={setDeployAmount}
-                  />
-                  <ActionBtn
-                    label={`Deploy ${deployAmount}`}
-                    gold
-                    flex
-                    onPress={() => {
-                      dispatch({ type: 'DEPLOY', territory: selected, count: deployAmount });
-                      setDeployAmount(1);
-                    }}
-                  />
-                </View>
-              )}
-              {selected && selectedOwned && game.reinforcementsRemaining > 1 && (
+              {selected && selectedOwned && remaining > 1 && (
                 <ActionBtn
-                  label={`Deploy All (${game.reinforcementsRemaining})`}
-                  onPress={() => {
-                    dispatch({ type: 'DEPLOY', territory: selected, count: game.reinforcementsRemaining });
-                    setDeployAmount(1);
-                  }}
+                  label={`Place all here (${remaining})`}
+                  gold
+                  onPress={() => dispatch({ type: 'DEPLOY', territory: selected, count: remaining })}
                 />
               )}
-              {player.cards.length > 0 && (
-                <ActionBtn label={`Cards (${player.cards.length})`} onPress={onOpenCards} />
-              )}
-              {game.reinforcementsRemaining === 0 && (
-                <ActionBtn label="→ Begin Attack" gold onPress={() => dispatch({ type: 'END_TURN' })} />
+              {(canUndo || player.cards.length > 0) && (
+                <View style={styles.deployRow}>
+                  {canUndo && (
+                    <ActionBtn label="↶ Undo" flex onPress={() => dispatch({ type: 'UNDO_DEPLOY' })} />
+                  )}
+                  {player.cards.length > 0 && (
+                    <ActionBtn label={`Cards (${player.cards.length})`} flex onPress={onOpenCards} />
+                  )}
+                </View>
               )}
             </>
           )}
@@ -146,20 +140,50 @@ export default function GamePanel({
     }
 
     if (phase === 'fortify') {
+      if (game.fortifyUsed) {
+        return (
+          <View style={styles.actionGroup}>
+            <Text style={styles.hint}>Tactical move complete.</Text>
+            <ActionBtn label="End Turn →" gold onPress={() => dispatch({ type: 'END_TURN' })} />
+          </View>
+        );
+      }
+      if (stagedMove) {
+        const fromTer = game.territories[stagedMove.from];
+        const maxMove = Math.max(1, (fromTer?.armies ?? 2) - 1);
+        const count = Math.min(stagedMove.count, maxMove);
+        const fromName = TERRITORY_MAP[stagedMove.from]?.name ?? stagedMove.from;
+        const toName = TERRITORY_MAP[stagedMove.to]?.name ?? stagedMove.to;
+        return (
+          <View style={styles.actionGroup}>
+            <Text style={styles.stagedLabel} numberOfLines={1}>
+              March: {fromName} → {toName}
+            </Text>
+            <View style={styles.deployRow}>
+              <Stepper
+                value={count}
+                min={1}
+                max={maxMove}
+                onChange={(n) => setStagedMove({ ...stagedMove, count: n })}
+              />
+              <ActionBtn
+                label={`March ${count} →`}
+                gold
+                flex
+                onPress={() => {
+                  dispatch({ type: 'FORTIFY', from: stagedMove.from, to: stagedMove.to, count });
+                  setStagedMove(null);
+                }}
+              />
+            </View>
+            <ActionBtn label="Cancel" onPress={() => setStagedMove(null)} />
+          </View>
+        );
+      }
       return (
         <View style={styles.actionGroup}>
           {selected && selectedOwned && targets.size > 0 && (
-            <>
-              <View style={styles.deployRow}>
-                <Stepper
-                  value={deployAmount}
-                  min={1}
-                  max={Math.max(1, (selectedTerritory?.armies ?? 2) - 1)}
-                  onChange={setDeployAmount}
-                />
-                <Text style={styles.fortifyHint}>Tap green territory to fortify</Text>
-              </View>
-            </>
+            <Text style={styles.attackHint}>Tap a green territory to stage the march</Text>
           )}
           <ActionBtn label="End Turn →" gold onPress={() => dispatch({ type: 'END_TURN' })} />
         </View>
@@ -325,6 +349,7 @@ const styles = StyleSheet.create({
   checkTextActive: { color: Colors.gold },
   allOutLabel: { color: Colors.text, fontFamily: 'Alegreya_500Medium', fontSize: 13 },
   attackHint: { color: Colors.textMuted, fontFamily: 'Alegreya_400Regular', fontSize: 12 },
+  stagedLabel: { color: Colors.text, fontFamily: 'Alegreya_600SemiBold', fontSize: 13 },
   btn: {
     borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.bgCard,
     paddingVertical: 10, paddingHorizontal: 14, alignItems: 'center',

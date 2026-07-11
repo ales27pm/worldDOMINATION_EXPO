@@ -236,6 +236,12 @@ export interface PendingOccupy {
   max: number;
 }
 
+/** One reinforcement placement, kept so the player can undo before attacking. */
+export interface DeployLogEntry {
+  territory: TerritoryId;
+  count: number;
+}
+
 export type LogTone = "info" | "gold" | "crimson" | "battle";
 
 export interface LogEntry {
@@ -277,6 +283,10 @@ export interface GameState {
   election: ElectionState | null;
   /** Round-by-round census for the post-game statistics graph. */
   history: TurnSnapshot[];
+  /** The one tactical move (manual, Chapter 5) has been spent this turn. */
+  fortifyUsed: boolean;
+  /** This turn's reinforcement placements, undoable until the attack begins. */
+  deployLog: DeployLogEntry[];
 }
 
 export type GameAction =
@@ -291,6 +301,7 @@ export type GameAction =
   | { type: "TRADE_CARDS"; cardIds: string[] }
   | { type: "AUTO_TRADE" }
   | { type: "DEPLOY"; territory: TerritoryId; count: number }
+  | { type: "UNDO_DEPLOY" }
   | { type: "ATTACK"; from: TerritoryId; to: TerritoryId; allOut: boolean }
   | { type: "OCCUPY"; count: number }
   | { type: "END_ATTACK" }

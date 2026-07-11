@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 
 import { playRandomSfx, playSfx, preloadSfx } from "@/lib/sfx";
+import { shouldShowBattleScene, useBattleSceneMode } from "@/lib/battleScenes";
 import type { BattleReport, GameAction, GamePhase, GameState } from "@/game/types";
 
 /** Samples worth having warm before the first shot is fired. */
@@ -53,6 +54,7 @@ export function playActionSound(action: GameAction): void {
       playSfx(action.accept ? "chime" : "click", { volume: 0.5 });
       break;
     case "ELECTION_PASS":
+    case "UNDO_DEPLOY":
     case "END_ATTACK":
     case "END_TURN":
     case "ACKNOWLEDGE_HANDOFF":
@@ -70,7 +72,8 @@ export function playActionSound(action: GameAction): void {
  * end of the war. Battles that get the cinematic BattleView are skipped here —
  * the view runs its own, richer sequence.
  */
-export function useGameSounds(game: GameState | null, battleViewsEnabled: boolean): void {
+export function useGameSounds(game: GameState | null): void {
+  const sceneMode = useBattleSceneMode();
   const prevBattleRef = useRef<BattleReport | null>(game?.lastBattle ?? null);
   const prevPhaseRef = useRef<GamePhase | null>(game?.phase ?? null);
   const prevHandoffRef = useRef<boolean>(game?.awaitingHandoff ?? false);
@@ -88,10 +91,7 @@ export function useGameSounds(game: GameState | null, battleViewsEnabled: boolea
     const battle = game.lastBattle;
     if (battle && battle !== prevBattleRef.current) {
       prevBattleRef.current = battle;
-      const humanInvolved =
-        Boolean(game.players[battle.attacker]?.isHuman) || Boolean(game.players[battle.defender]?.isHuman);
-      const cinematic = battleViewsEnabled && humanInvolved;
-      if (!cinematic) {
+      if (!shouldShowBattleScene(game, battle, sceneMode)) {
         playSfx("dice_roll", { volume: 0.35, throttleMs: 550 });
         playRandomSfx(["clash_a", "clash_b", "cannon_a"], { volume: 0.28, throttleMs: 420 });
         if (battle.conquered) playSfx("stab", { volume: 0.32, throttleMs: 900 });
@@ -102,6 +102,17 @@ export function useGameSounds(game: GameState | null, battleViewsEnabled: boolea
     if (game.phase === "gameOver" && prevPhaseRef.current !== "gameOver") {
       const winnerIsHuman = game.winner !== null && Boolean(game.players[game.winner]?.isHuman);
       playSfx(winnerIsHuman ? "fanfare" : "defeat", { volume: 0.7 });
+    }
+
+    // Chapter cues — a low flourish as the human commander's turn advances
+    // to the engagement and maneuver phases (deployment has the turn chime).
+    if (
+      game.phase !== prevPhaseRef.current &&
+      (game.phase === "attack" || game.phase === "fortify") &&
+      game.players[game.currentPlayer]?.isHuman === true &&
+      !game.awaitingHandoff
+    ) {
+      playSfx("whoosh", { volume: 0.3, throttleMs: 600 });
     }
     prevPhaseRef.current = game.phase;
 
@@ -128,5 +139,5 @@ export function useGameSounds(game: GameState | null, battleViewsEnabled: boolea
       playSfx("chime", { volume: 0.35, throttleMs: 1200 });
     }
     prevPlayerRef.current = game.currentPlayer;
-  }, [game, battleViewsEnabled]);
+  }, [game, sceneMode]);
 }

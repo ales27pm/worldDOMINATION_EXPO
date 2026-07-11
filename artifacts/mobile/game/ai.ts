@@ -220,6 +220,8 @@ export function aiNextAction(state: GameState): GameAction | null {
   }
 
   if (state.phase === "fortify") {
+    // The tactical move no longer auto-ends the turn — close it explicitly.
+    if (state.fortifyUsed) return { type: "END_TURN" };
     const owned = state.activeIds.filter((id) => state.territories[id].owner === player.id);
     let best: { from: TerritoryId; to: TerritoryId; count: number; score: number } | null = null;
     for (const from of owned) {

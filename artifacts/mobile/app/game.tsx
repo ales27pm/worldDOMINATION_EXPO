@@ -12,11 +12,13 @@ import { tournamentResult } from '@/game/tournament';
 import { Colors } from '@/constants/colors';
 import type { GameAction, GameState, TerritoryId } from '@/game/types';
 import { playActionSound, useGameSounds } from '@/hooks/useGameSounds';
+import { BATTLE_SCENE_LABELS, cycleBattleSceneMode, useBattleSceneMode } from '@/lib/battleScenes';
 import GameMap, { MAP_VIEW_LABELS, MAP_VIEW_MODES, type MapViewMode } from '@/components/game/GameMap';
 import { ContinentLegend } from '@/components/game/WorldBoard';
 import { TopBar } from '@/components/game/TopBar';
 import { FieldPanel, SectionHeader } from '@/components/game/FieldPanel';
-import GamePanel from '@/components/game/GamePanel';
+import { PhaseBanner } from '@/components/game/PhaseBanner';
+import GamePanel, { type StagedMove } from '@/components/game/GamePanel';
 import PlayerRoster from '@/components/game/PlayerRoster';
 import BattleReportCard from '@/components/game/BattleReport';
 import CardHand from '@/components/game/CardHand';
@@ -75,11 +77,11 @@ function CampaignScreen({ game }: { game: GameState }) {
   );
 
   // State-transition sound director: battles, proposals, handoffs, victory.
-  // Battle views are always enabled on mobile.
-  useGameSounds(game, true);
+  useGameSounds(game);
 
+  const sceneMode = useBattleSceneMode();
   const [selected, setSelected] = useState<TerritoryId | null>(null);
-  const [deployAmount, setDeployAmount] = useState(1);
+  const [stagedMove, setStagedMove] = useState<StagedMove | null>(null);
   const [allOut, setAllOut] = useState(true);
   const [cardsOpen, setCardsOpen] = useState(false);
   const [rosterOpen, setRosterOpen] = useState(false);
@@ -114,8 +116,16 @@ function CampaignScreen({ game }: { game: GameState }) {
   // ── Deselect when phase changes ────────────────────────────────────────────
   useEffect(() => {
     setSelected(null);
-    setDeployAmount(1);
+    setStagedMove(null);
   }, [game.phase, game.currentPlayer]);
+
+  // Once the tactical move lands, clear any staging UI.
+  useEffect(() => {
+    if (game.fortifyUsed) {
+      setSelected(null);
+      setStagedMove(null);
+    }
+  }, [game.fortifyUsed]);
 
   // ── Territory interaction sets ─────────────────────────────────────────────
   const { interactive, targets } = useMemo(() => {
@@ -173,7 +183,7 @@ function CampaignScreen({ game }: { game: GameState }) {
           }
         }
       }
-    } else if (phase === 'fortify') {
+    } else if (phase === 'fortify' && !game.fortifyUsed) {
       if (!selected) {
         for (const id of game.activeIds) {
           const ter = game.territories[id];
@@ -226,23 +236,34 @@ function CampaignScreen({ game }: { game: GameState }) {
       }
     }
     if (phase === 'fortify') {
+      if (game.fortifyUsed) {
+        if (id !== selected) setSelected(null);
+        return;
+      }
       if (selected && targets.has(id)) {
-        dispatch({ type: 'FORTIFY', from: selected, to: id, count: deployAmount });
-        setSelected(null);
-        setDeployAmount(1);
+        // Stage the march — the MARCH button in the panel commits it.
+        const maxMove = Math.max(1, (game.territories[selected]?.armies ?? 2) - 1);
+        setStagedMove({ from: selected, to: id, count: maxMove });
         return;
       }
       if (ter.owner === player?.id) {
+        setStagedMove(null);
         setSelected(id === selected ? null : id);
         return;
       }
     }
     if (phase === 'reinforcement' && ter.owner === player?.id) {
-      setSelected(id === selected ? null : id);
+      if (game.mustTrade || game.reinforcementsRemaining < 1) {
+        setSelected(id === selected ? null : id);
+        return;
+      }
+      // Tap-to-place: every tap drops one army here.
+      dispatch({ type: 'DEPLOY', territory: id, count: 1 });
+      setSelected(id);
       return;
     }
     if (id !== selected) setSelected(null);
-  }, [game, selected, targets, allOut, deployAmount, isHumanActive, dispatch, player]);
+  }, [game, selected, targets, allOut, isHumanActive, dispatch, player]);
 
   // ── Victory / game-over exit ───────────────────────────────────────────────
   const handleVictoryExit = useCallback(async () => {
@@ -335,8 +356,18 @@ function CampaignScreen({ game }: { game: GameState }) {
           <Pressable onPress={cycleViewMode} style={styles.viewModeBtn}>
             <Text style={styles.viewModeText}>{MAP_VIEW_LABELS[viewMode].toUpperCase()}</Text>
           </Pressable>
+          <Pressable
+            onPress={cycleBattleSceneMode}
+            style={styles.viewModeBtn}
+            accessibilityLabel="Battle scene pacing"
+          >
+            <Text style={styles.viewModeText}>BATTLES: {BATTLE_SCENE_LABELS[sceneMode]}</Text>
+          </Pressable>
         </View>
       </SafeAreaView>
+
+      {/* Phase chapter card — non-blocking toast, human turns only */}
+      <PhaseBanner game={game} />
 
       {/* Floating bottom chrome */}
       <SafeAreaView edges={['bottom']} style={styles.bottomChrome} pointerEvents="box-none">
@@ -354,16 +385,16 @@ function CampaignScreen({ game }: { game: GameState }) {
         {game.phase !== 'gameOver' && (
           <View style={styles.bottomBar}>
             <GamePanel
-            game={game}
-            selected={selected}
-            targets={targets}
-            deployAmount={deployAmount}
-            setDeployAmount={setDeployAmount}
-            allOut={allOut}
-            setAllOut={setAllOut}
-            dispatch={dispatch}
-            onOpenCards={() => setCardsOpen(true)}
-            onOpenRoster={() => setRosterOpen(true)}
+              game={game}
+              selected={selected}
+              targets={targets}
+              stagedMove={stagedMove}
+              setStagedMove={setStagedMove}
+              allOut={allOut}
+              setAllOut={setAllOut}
+              dispatch={dispatch}
+              onOpenCards={() => setCardsOpen(true)}
+              onOpenRoster={() => setRosterOpen(true)}
               onOpenLog={() => setLogOpen(true)}
             />
           </View>
@@ -412,7 +443,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
   legendOverlay: { position: 'absolute', left: 10, bottom: 128, zIndex: 5 },
   topBar: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 },
-  viewRail: { alignItems: 'flex-start', paddingLeft: 8, paddingTop: 8 },
+  viewRail: { alignItems: 'flex-start', paddingLeft: 8, paddingTop: 8, gap: 6 },
   viewModeBtn: {
     borderWidth: 1, borderColor: 'rgba(222,190,115,0.4)',
     paddingHorizontal: 8, paddingVertical: 4,
