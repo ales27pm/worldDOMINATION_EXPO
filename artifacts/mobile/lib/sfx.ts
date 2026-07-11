@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from "react";
 
+import { Platform } from "react-native";
+
 import {
   createAudioPlayer,
   setAudioModeAsync,
@@ -8,13 +10,13 @@ import {
 } from "expo-audio";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { assetUrl } from "./assetUrl";
+import { SFX_SOURCES } from "./sfxSources";
 
 /**
- * RISK II sound board — the original game samples, served from object storage
- * at public/risk/sfx. A tiny expo-audio based engine mirroring the web build:
- * fire-and-forget one-shots with per-call volume, throttling, fade-out stops,
- * and a persisted global mute.
+ * RISK II sound board — the original game samples, bundled with the app
+ * (assets/sfx) so playback is instant and offline-safe. A tiny expo-audio
+ * based engine mirroring the web build: fire-and-forget one-shots with
+ * per-call volume, throttling, fade-out stops, and a persisted global mute.
  */
 export type SfxName =
   | "battle_din"
@@ -64,6 +66,40 @@ setAudioModeAsync({
   shouldPlayInBackground: false,
 }).catch(() => {});
 
+/**
+ * Web autoplay gate — browsers reject any playback that is not triggered by
+ * a user gesture, and expo-audio surfaces that as an uncaught
+ * NotAllowedError (a dev-overlay crash on Expo web). Hold all playback until
+ * the first pointer/key input; pre-gesture cues are dropped, and the tap
+ * that starts the game unlocks audio for everything after it.
+ */
+let unlocked = Platform.OS !== "web";
+
+if (!unlocked && typeof window !== "undefined") {
+  const unlock = () => {
+    unlocked = true;
+    window.removeEventListener("pointerdown", unlock, true);
+    window.removeEventListener("keydown", unlock, true);
+  };
+  window.addEventListener("pointerdown", unlock, true);
+  window.addEventListener("keydown", unlock, true);
+
+  // Autoplay-policy rejections that still slip through are non-actionable
+  // noise — keep them out of the error overlay. Scoped tightly: only
+  // DOMExceptions, and for aborts only media-flavored ones (a pause()
+  // racing a play()), so real app errors are never masked.
+  window.addEventListener("unhandledrejection", (event) => {
+    const reason: unknown = event.reason;
+    if (!(reason instanceof DOMException)) return;
+    if (
+      reason.name === "NotAllowedError" ||
+      (reason.name === "AbortError" && /play\(\)|\bmedia\b/i.test(reason.message))
+    ) {
+      event.preventDefault();
+    }
+  });
+}
+
 // Hydrate the persisted mute preference (async — applies within milliseconds
 // of module load, well before the first battle).
 AsyncStorage.getItem(MUTE_KEY)
@@ -79,10 +115,6 @@ AsyncStorage.getItem(MUTE_KEY)
     }
   })
   .catch(() => {});
-
-function uriFor(name: SfxName): string {
-  return assetUrl(`public/risk/sfx/${name}.mp3`);
-}
 
 function isPlayerActive(player: AudioPlayer): boolean {
   for (const l of active) {
@@ -148,6 +180,7 @@ export interface PlayOptions {
  * safe to call at any time (including after natural end).
  */
 export function playSfx(name: SfxName, options: PlayOptions = {}): () => void {
+  if (!unlocked) return () => {};
   const { volume = 1, throttleMs = 0, maxMs } = options;
   if (throttleMs > 0) {
     const last = lastPlayed.get(name) ?? 0;
@@ -181,7 +214,7 @@ export function playSfx(name: SfxName, options: PlayOptions = {}): () => void {
       l = { player: pooledPlayer, pooled: true, subscription: null };
     } else {
       // Cold or overlapping play — spin up a transient instance.
-      const player = createAudioPlayer({ uri: uriFor(name) });
+      const player = createAudioPlayer(SFX_SOURCES[name]);
       player.volume = vol;
       player.muted = muted;
       player.play();
@@ -220,7 +253,7 @@ export function preloadSfx(names: SfxName[]): void {
     if (preloaded.has(name)) continue;
     try {
       // Player creation is synchronous; the media loads in the background.
-      preloaded.set(name, createAudioPlayer({ uri: uriFor(name) }));
+      preloaded.set(name, createAudioPlayer(SFX_SOURCES[name]));
     } catch {
       // Preload is best-effort — playback falls back to a transient instance.
     }

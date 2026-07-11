@@ -143,7 +143,7 @@ export default function HomeScreen() {
         >
         {/* Title — the "Anno Domini MDCCCXII" heraldic hall */}
         <View style={styles.titleBlock}>
-          <RNImage source={{ uri: ART.warCrest }} style={styles.crest} resizeMode="contain" />
+          <RNImage source={ART.warCrest} style={styles.crest} resizeMode="contain" />
           <Text style={styles.subtitle}>ANNO DOMINI MDCCCXII</Text>
           <Text style={styles.title} numberOfLines={1} adjustsFontSizeToFit>
             WORLD
@@ -157,7 +157,7 @@ export default function HomeScreen() {
           </Text>
           <View style={styles.divider} />
           <View style={styles.heroFrame}>
-            <RNImage source={{ uri: ART.heroPainting }} style={styles.hero} resizeMode="cover" />
+            <RNImage source={ART.heroPainting} style={styles.hero} resizeMode="cover" />
           </View>
           <Text style={styles.tagline}>
             A Napoleonic campaign of global conquest. Muster your regiments, command the field

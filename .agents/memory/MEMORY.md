@@ -1,3 +1,4 @@
 - [World Domination mobile port](world-domination-mobile.md) — complete Expo app at artifacts/mobile; all game logic ported, key architecture decisions recorded.
 - [Published Expo runtime module gaps](expo-published-runtime.md) — published mobile shell registers fewer native views than Expo Go; expo-linear-gradient crashes in prod only, use react-native-svg.
-- [Mobile game art delivery](mobile-art-delivery.md) — bundle game-critical images (rate limits + RN Image's no-retry = permanent holes); bundled images need explicit sizes, inset-only absoluteFill renders them at intrinsic px.
+- [Mobile game asset delivery](mobile-art-delivery.md) — bundle game-critical images AND audio (remote loads = silent first battle, permanent holes); bundled images need explicit sizes, not inset-only absoluteFill.
+- [Web autoplay & expo-audio](expo-web-autoplay.md) — browsers reject pre-gesture play(); expo-audio surfaces it as an uncaught NotAllowedError overlay — gate all playback behind first pointer/key input.
