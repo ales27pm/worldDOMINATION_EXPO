@@ -16,6 +16,8 @@ const path = require('path');
 const STATIC_ROOT = path.resolve(__dirname, '..', 'static-build');
 const TEMPLATE_PATH = path.resolve(__dirname, 'templates', 'landing-page.html');
 const ICON_PATH = path.resolve(__dirname, '..', 'assets', 'images', 'icon.png');
+const OG_IMAGE_PATH = path.resolve(__dirname, '..', 'assets', 'art', 'hero-painting.webp');
+const OG_IMAGE_ROUTE = '/og-image.webp';
 const basePath = (process.env.BASE_PATH || '/').replace(/\/+$/, '');
 
 const MIME_TYPES = {
@@ -34,6 +36,7 @@ const MIME_TYPES = {
   '.ttf': 'font/ttf',
   '.otf': 'font/otf',
   '.map': 'application/json',
+  '.webp': 'image/webp',
 };
 
 function getAppName() {
@@ -70,16 +73,32 @@ function serveLandingPage(req, res, landingPageTemplate, appName) {
   const forwardedProto = req.headers['x-forwarded-proto'];
   const protocol = forwardedProto || 'https';
   const host = req.headers['x-forwarded-host'] || req.headers['host'];
-  const baseUrl = `${protocol}://${host}`;
+  const baseUrl = `${protocol}://${host}${basePath}`;
   const expsUrl = `${host}`;
+  const ogImageUrl = `${baseUrl}${OG_IMAGE_ROUTE}`;
 
   const html = landingPageTemplate
     .replace(/BASE_URL_PLACEHOLDER/g, baseUrl)
     .replace(/EXPS_URL_PLACEHOLDER/g, expsUrl)
+    .replace(/OG_IMAGE_PLACEHOLDER/g, ogImageUrl)
     .replace(/APP_NAME_PLACEHOLDER/g, appName);
 
   res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
   res.end(html);
+}
+
+function serveOgImage(res) {
+  if (!fs.existsSync(OG_IMAGE_PATH)) {
+    res.writeHead(404);
+    res.end('Not Found');
+    return;
+  }
+
+  res.writeHead(200, {
+    'content-type': 'image/webp',
+    'cache-control': 'public, max-age=86400',
+  });
+  res.end(fs.readFileSync(OG_IMAGE_PATH));
 }
 
 function serveIcon(res) {
@@ -132,6 +151,10 @@ const server = http.createServer((req, res) => {
 
   if (pathname === '/favicon.png' || pathname === '/apple-touch-icon.png') {
     return serveIcon(res);
+  }
+
+  if (pathname === OG_IMAGE_ROUTE) {
+    return serveOgImage(res);
   }
 
   if (pathname === '/' || pathname === '/manifest') {
