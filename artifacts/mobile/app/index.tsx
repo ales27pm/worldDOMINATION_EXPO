@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import {
   View, Text, StyleSheet, Pressable, Image as RNImage,
-  ActivityIndicator, ScrollView,
+  ActivityIndicator, ScrollView, Alert, Platform,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -67,6 +67,33 @@ export default function HomeScreen() {
         }
       : null;
   const savedAt = summary?.updatedAt ? formatSavedAt(summary.updatedAt) : null;
+
+  // Confirm before wiping the save slot. RN Alert buttons are a no-op on web,
+  // so the Expo web preview falls back to window.confirm.
+  const confirmAbandon = useCallback(() => {
+    const title = 'Abandon Campaign?';
+    const detail = continueMeta
+      ? `Turn ${continueMeta.turn} — ${continueMeta.objective}`
+      : 'Your saved campaign';
+    const message = `${detail} will be permanently erased.`;
+    const onConfirm = () => {
+      void abandonGame().then(() => {
+        // Refresh the save-slot summary so the menu updates immediately.
+        loadSaveSummary()
+          .then((s) => setSummary(s))
+          .catch(() => setSummary(null));
+      });
+    };
+    if (Platform.OS === 'web') {
+      // eslint-disable-next-line no-alert
+      if (window.confirm(`${title}\n\n${message}`)) onConfirm();
+      return;
+    }
+    Alert.alert(title, message, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Abandon', style: 'destructive', onPress: onConfirm },
+    ]);
+  }, [continueMeta, abandonGame]);
 
   if (loadingSave) {
     return (
@@ -141,9 +168,7 @@ export default function HomeScreen() {
             <MenuButton
               label="Abandon Campaign"
               danger
-              onPress={() => {
-                void abandonGame();
-              }}
+              onPress={confirmAbandon}
             />
           )}
 

@@ -13,7 +13,7 @@ interface GameContextValue {
   game: GameState | null;
   startGame: (setup: GameSetup) => void;
   dispatch: (action: GameAction) => void;
-  abandonGame: () => void;
+  abandonGame: () => Promise<void>;
   loadingSave: boolean;
 }
 
