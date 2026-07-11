@@ -1,8 +1,8 @@
 import React, { useCallback, useMemo, useRef } from 'react';
-import { Dimensions, StyleSheet, View } from 'react-native';
+import { Dimensions, Image as RNImage, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
-import Svg, { Circle, G, Image as SvgImage, Path, Rect, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, G, Path, Text as SvgText } from 'react-native-svg';
 import { borderThreat, largestEmpire } from '@/game/analysis';
 import { TERRITORY_MAP } from '@/game/mapData';
 import { SHAPES_H, SHAPES_W, TERRITORY_PATHS } from '@/game/mapShapes';
@@ -287,21 +287,19 @@ export default function GameMap({
     <GestureDetector gesture={composed}>
       <View style={styles.container}>
         <Animated.View style={[styles.svgWrap, animatedStyle]}>
+          {/* Parchment background — RNImage loads remote URLs reliably on native */}
+          <RNImage
+            source={{ uri: MAP_PARCHMENT }}
+            style={styles.parchment}
+            resizeMode="cover"
+          />
+
           <Svg
             width={SHAPES_W}
             height={SHAPES_H}
             viewBox={`0 0 ${SHAPES_W} ${SHAPES_H}`}
+            style={styles.svg}
           >
-            {/* Parchment map background */}
-            <SvgImage
-              href={{ uri: MAP_PARCHMENT }}
-              x={0}
-              y={0}
-              width={SHAPES_W}
-              height={SHAPES_H}
-              preserveAspectRatio="xMidYMid slice"
-            />
-
             {/* Territory fills */}
             {game.activeIds.map((id) => {
               const path = TERRITORY_PATHS[id];
@@ -392,7 +390,7 @@ export default function GameMap({
                 );
               })}
 
-            {/* Army pieces (figure sprites + count badge) */}
+            {/* Army count badges (SVG circles + numbers; figures rendered as RNImage below) */}
             {game.activeIds.map((id) => {
               const ter = game.territories[id];
               const def = TERRITORY_MAP[id];
@@ -404,27 +402,18 @@ export default function GameMap({
                 owner === -1 ? '#888' : (game.players[owner]?.color ?? '#888');
               const isSelected = id === selected;
               const isTarget = targets.has(id);
+              const pw = PIECE_W[pieceForArmies(ter.armies)];
 
-              const pieceUri = pieceForArmies(ter.armies);
-              const pw = PIECE_W[pieceUri];
-              const ph = PIECE_H[pieceUri];
-
-              // Badge colour
               const badgeBg = isSelected ? '#3a2800' : isTarget ? '#3a0a00' : 'rgba(20,12,4,0.88)';
               const badgeTxt = isSelected ? Colors.gold : isTarget ? Colors.textCrimson : Colors.text;
               const badgeR = ter.armies >= 100 ? 10 : 9;
               const badgeFontSize = ter.armies >= 100 ? 7 : ter.armies >= 10 ? 8 : 9;
-
-              // Anchor: figure sits centred on svgCx, bottom at svgCy + 6
-              const imgX = svgCx - pw / 2;
-              const imgY = svgCy - ph + 6;
-              // Badge sits at bottom-right of figure
               const badgeCx = svgCx + pw / 2 - 2;
               const badgeCy = svgCy + 8;
 
               return (
                 <G key={`army-${id}`}>
-                  {/* Base disc in player colour */}
+                  {/* Coloured base disc */}
                   <Circle
                     cx={svgCx}
                     cy={svgCy + 6}
@@ -434,16 +423,7 @@ export default function GameMap({
                     stroke={isSelected ? Colors.gold : isTarget ? Colors.textCrimson : ownerColor}
                     strokeWidth={isSelected || isTarget ? 2 : 0.5}
                   />
-                  {/* Figure sprite */}
-                  <SvgImage
-                    href={{ uri: pieceUri }}
-                    x={imgX}
-                    y={imgY}
-                    width={pw}
-                    height={ph}
-                    preserveAspectRatio="xMidYMid meet"
-                  />
-                  {/* Army count badge */}
+                  {/* Count badge */}
                   <Circle
                     cx={badgeCx}
                     cy={badgeCy}
@@ -485,6 +465,32 @@ export default function GameMap({
               </>
             )}
           </Svg>
+
+          {/* Figure sprites — RNImage handles remote URLs reliably on native */}
+          {game.activeIds.map((id) => {
+            const ter = game.territories[id];
+            const def = TERRITORY_MAP[id];
+            if (!ter || !def || ter.armies <= 0) return null;
+            const svgCx = def.x * SHAPES_W;
+            const svgCy = def.y * SHAPES_H;
+            const pieceUri = pieceForArmies(ter.armies);
+            const pw = PIECE_W[pieceUri];
+            const ph = PIECE_H[pieceUri];
+            return (
+              <RNImage
+                key={`piece-${id}`}
+                source={{ uri: pieceUri }}
+                style={{
+                  position: 'absolute',
+                  left: svgCx - pw / 2,
+                  top: svgCy - ph + 6,
+                  width: pw,
+                  height: ph,
+                }}
+                resizeMode="contain"
+              />
+            );
+          })}
         </Animated.View>
       </View>
     </GestureDetector>
@@ -502,5 +508,18 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: SHAPES_W,
     height: SHAPES_H,
+  },
+  parchment: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    width: SHAPES_W,
+    height: SHAPES_H,
+  },
+  svg: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    backgroundColor: 'transparent',
   },
 });
