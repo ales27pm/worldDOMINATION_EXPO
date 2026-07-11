@@ -96,6 +96,10 @@ export class ObjectStorageService {
     const aclPolicy = await getObjectAclPolicy(file);
     const isPublic = aclPolicy?.visibility === 'public';
 
+    if (!isPublic) {
+      throw new ObjectNotFoundError();
+    }
+
     const nodeStream = file.createReadStream();
     const webStream = Readable.toWeb(nodeStream) as ReadableStream;
 
