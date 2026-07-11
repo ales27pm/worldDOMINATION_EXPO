@@ -1,13 +1,66 @@
-import React from "react";
-import { View, Text, StyleSheet } from "react-native";
+import React, { useEffect, useState } from "react";
+import { View, Text, StyleSheet, Pressable, type StyleProp, type ViewStyle } from "react-native";
 import { Colors } from "@/constants/colors";
 import type { BattleReport, GameState } from "@/game/types";
 import { TERRITORY_MAP } from "@/game/mapData";
+import { useBattleSceneVisible } from "@/lib/battleScenes";
 import { RiskDie } from "./RiskDie";
 
 interface Props {
   battle: BattleReport;
   game: GameState;
+}
+
+/** How long the recap card lingers on screen after a battle. */
+const LINGER_MS = 5000;
+
+/**
+ * Auto-hiding wrapper for the LAST BATTLE card: each new battle surfaces the
+ * recap, it lingers a few seconds, then clears so the map stays visible.
+ * Tap dismisses it early. The countdown pauses while the cinematic battle
+ * modal covers the screen (same visibility store the occupy toast uses).
+ * The engine's `lastBattle` state is untouched — this is display-only.
+ */
+export function TransientBattleReport({
+  game,
+  style,
+}: {
+  game: GameState;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const report = game.phase === "attack" ? game.lastBattle : null;
+  // The reducer deep-clones state on every dispatch, so the report's object
+  // identity changes even when no new battle happened (e.g. the occupy
+  // auto-advance). Key each battle by the monotonic battlesFought counter
+  // instead, or unrelated dispatches would re-surface a dismissed card.
+  const battleKey = report ? game.battlesFought : null;
+  const sceneVisible = useBattleSceneVisible();
+  const [shownKey, setShownKey] = useState<number | null>(null);
+
+  // A new battle re-surfaces the card, even if the previous one was
+  // dismissed; leaving the attack phase clears it.
+  useEffect(() => {
+    setShownKey(battleKey);
+  }, [battleKey]);
+
+  // Linger countdown — only ticks while the card is actually visible.
+  useEffect(() => {
+    if (shownKey === null || sceneVisible) return;
+    const timer = setTimeout(() => setShownKey(null), LINGER_MS);
+    return () => clearTimeout(timer);
+  }, [shownKey, sceneVisible]);
+
+  if (shownKey === null || !report) return null;
+  return (
+    <Pressable
+      style={style}
+      onPress={() => setShownKey(null)}
+      accessibilityRole="button"
+      accessibilityLabel="Dismiss battle report"
+    >
+      <BattleReportCard battle={report} game={game} />
+    </Pressable>
+  );
 }
 
 /** Compact inline battle result card shown above the action panel. */

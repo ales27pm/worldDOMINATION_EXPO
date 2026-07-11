@@ -20,7 +20,7 @@ import { FieldPanel, SectionHeader } from '@/components/game/FieldPanel';
 import { PhaseBanner } from '@/components/game/PhaseBanner';
 import GamePanel, { type StagedMove } from '@/components/game/GamePanel';
 import PlayerRoster from '@/components/game/PlayerRoster';
-import BattleReportCard from '@/components/game/BattleReport';
+import { TransientBattleReport } from '@/components/game/BattleReport';
 import CardHand from '@/components/game/CardHand';
 import { BattleView } from '@/components/game/BattleView';
 import {
@@ -371,11 +371,9 @@ function CampaignScreen({ game }: { game: GameState }) {
 
       {/* Floating bottom chrome */}
       <SafeAreaView edges={['bottom']} style={styles.bottomChrome} pointerEvents="box-none">
-        {/* Battle report (inline, shown above panel) */}
-        {game.lastBattle && game.phase === 'attack' && (
-          <View style={styles.battleContainer}>
-            <BattleReportCard battle={game.lastBattle} game={game} />
-          </View>
+        {/* Battle report (inline, shown above panel) — auto-hides after a beat */}
+        {game.phase === 'attack' && (
+          <TransientBattleReport game={game} style={styles.battleContainer} />
         )}
 
         {/* Election panel */}
