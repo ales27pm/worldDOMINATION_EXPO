@@ -20,7 +20,7 @@ The API currently exposes:
 - **Browser/Client → API** — all client requests cross this boundary. Currently no authentication or authorization is enforced at the API layer.
 - **API → GCS** — API uses GCP external account credentials via the Replit sidecar. Compromise of sidecar endpoint or credential leak would expose all storage.
 - **API → PostgreSQL** — direct connection; SQL injection would give full DB access.
-- **Public → Private GCS** — the ACL system (`objectAcl.ts`) enforces this boundary per-object, but the current API only exposes public object serving with no private object download route.
+- **Public → Private GCS** — the ACL system (`objectAcl.ts`) enforces this boundary per-object, but the current public-object serving route **does not check `aclPolicy.visibility` before streaming file content**. Path-based separation (public vs. private dirs) is the only runtime enforcement.
 
 ## Scan Anchors
 
@@ -40,16 +40,17 @@ All API endpoints MUST validate caller identity before accessing any user-scoped
 
 ### Tampering / Input Validation
 
-The `filePath` parameter in the public objects endpoint is taken from user input and concatenated directly into a GCS path string without sanitization. While GCS does not resolve `..` sequences in object names (preventing traditional path traversal), the lack of normalization means callers can probe arbitrary object names within the search paths.
+The `filePath` parameter in the public objects endpoint is sanitized: encoded traversal sequences (`%2f`, `%2e%2e`) are blocked on the raw URL, and literal `..` segments are blocked after decoding. Since GCS does not resolve `..` patterns as directory traversal in object names, residual double-encoded bypasses (`%252e%252e`) are not exploitable in practice.
 
 ### Information Disclosure
 
-- CORS is configured with `app.use(cors())` (no `origin` option), which mirrors the request's `Origin` header and allows any website to read API responses cross-origin. This becomes exploitable the moment any session cookies or credentials are introduced.
+- **ACL policy not enforced before serving** (OPEN FINDING): `downloadObject()` fetches the ACL policy but uses it only to set `Cache-Control` headers — it does not abort when `aclPolicy.visibility !== 'public'`. An object stored in a public search path with a private ACL will be served to any unauthenticated caller. The serving route MUST check `aclPolicy.visibility === 'public'` and return 403 before streaming.
+- CORS is configured with an allowlist of allowed origins derived from `REPLIT_DOMAINS` and `ALLOWED_ORIGINS` env vars. `credentials: false` is enforced until a session mechanism is introduced. This is correctly hardened.
 - The sidecar endpoint (`http://127.0.0.1:1106`) must remain internal. It is not validated to be localhost-only in application code, relying on Replit platform networking.
 
 ### Denial of Service
 
-No rate limiting is present on any endpoint. The public object serving endpoint performs GCS network I/O for each request, making it vulnerable to unbounded request flooding that can exhaust GCS egress, memory, or connection pools.
+Per-IP rate limiting is applied globally (120 req/min) and more strictly on the storage endpoint (60 req/min) using `express-rate-limit` with `trust proxy: 1` so that `req.ip` reflects the real client IP from Replit's reverse proxy. IPv6 addresses are normalized to /56 subnets.
 
 ### Elevation of Privilege
 
