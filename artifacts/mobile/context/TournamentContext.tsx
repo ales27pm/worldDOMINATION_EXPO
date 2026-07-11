@@ -2,7 +2,9 @@
  * TournamentContext — manages an in-progress tournament session.
  *
  * A session is created when the player starts the tournament, persisted to
- * AsyncStorage, and destroyed when they are eliminated or finish all 16 games.
+ * the on-device database, and destroyed when they resign or start a new run.
+ * When a run concludes (eliminated or all 16 games played) the final score
+ * is engraved in the 12-slot high-score ledger.
  */
 import React, {
   createContext,
@@ -11,24 +13,18 @@ import React, {
   useEffect,
   useState,
 } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { migrateLegacyStorage } from '@/db/migrate';
+import {
+  clearTournamentProgress,
+  getTournamentProgress,
+  saveTournamentProgress,
+  submitHighScore,
+} from '@/db/repository';
+import type { TournamentGameRecord, TournamentSession } from '@/db/types';
 import type { TournamentResult } from '@/game/tournament';
 import { TOURNAMENT_LENGTH } from '@/game/tournament';
 
-const SAVE_KEY = 'worlddomination.tournament';
-
-export interface TournamentGameRecord {
-  gameIndex: number; // 0-based
-  result: TournamentResult;
-}
-
-export interface TournamentSession {
-  humanName: string;
-  /** 0-based index of the game the player should play next (= results.length). */
-  currentGame: number;
-  totalPoints: number;
-  records: TournamentGameRecord[];
-}
+export type { TournamentGameRecord, TournamentSession };
 
 interface TournamentContextValue {
   session: TournamentSession | null;
@@ -45,19 +41,25 @@ export function TournamentProvider({ children }: { children: React.ReactNode }) 
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    AsyncStorage.getItem(SAVE_KEY)
-      .then((raw) => {
-        if (raw) setSession(JSON.parse(raw) as TournamentSession);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    async function load() {
+      try {
+        await migrateLegacyStorage();
+        const stored = await getTournamentProgress();
+        if (stored) setSession(stored);
+      } catch {
+        // Unreadable session — start fresh
+      } finally {
+        setLoading(false);
+      }
+    }
+    void load();
   }, []);
 
   const persist = useCallback((s: TournamentSession | null) => {
     if (s) {
-      AsyncStorage.setItem(SAVE_KEY, JSON.stringify(s)).catch(() => {});
+      saveTournamentProgress(s).catch(() => {});
     } else {
-      AsyncStorage.removeItem(SAVE_KEY).catch(() => {});
+      clearTournamentProgress().catch(() => {});
     }
   }, []);
 
@@ -77,29 +79,39 @@ export function TournamentProvider({ children }: { children: React.ReactNode }) 
 
   const recordResult = useCallback(
     (result: TournamentResult) => {
-      setSession((prev) => {
-        if (!prev) return prev;
-        const records = [
-          ...prev.records,
-          { gameIndex: prev.currentGame, result },
-        ];
-        const next: TournamentSession = {
-          ...prev,
-          records,
-          currentGame: prev.currentGame + 1,
-          totalPoints: prev.totalPoints + result.points,
-        };
-        persist(next);
-        return next;
-      });
+      if (!session) return;
+      const records: TournamentGameRecord[] = [
+        ...session.records,
+        { gameIndex: session.currentGame, result },
+      ];
+      let next: TournamentSession = {
+        ...session,
+        records,
+        currentGame: session.currentGame + 1,
+        totalPoints: session.totalPoints + result.points,
+      };
+      const ended = next.currentGame >= TOURNAMENT_LENGTH || result.eliminated;
+      if (ended && !next.scoreSubmitted && next.totalPoints > 0) {
+        next = { ...next, scoreSubmitted: true };
+        const completed = result.eliminated
+          ? Math.max(0, next.records.length - 1)
+          : next.records.length;
+        submitHighScore(next.humanName, next.totalPoints, completed).catch(() => {});
+      }
+      setSession(next);
+      persist(next);
     },
-    [persist],
+    [session, persist],
   );
 
   const endTournament = useCallback(() => {
+    // Resigning mid-run still banks the score, like the web's Resign action.
+    if (session && !session.scoreSubmitted && session.totalPoints > 0 && !sessionEnded(session)) {
+      submitHighScore(session.humanName, session.totalPoints, session.records.length).catch(() => {});
+    }
     setSession(null);
     persist(null);
-  }, [persist]);
+  }, [session, persist]);
 
   return (
     <TournamentContext.Provider

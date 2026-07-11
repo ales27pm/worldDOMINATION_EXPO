@@ -60,8 +60,15 @@ Files to sync (pure TS, no DOM deps): `types.ts`, `engine.ts`, `ai.ts`, `mapData
 - `empire` — human player's largest connected empire in gold; others dimmed
 - Cycle button in top-right of game screen; heat data computed in `useMemo` only when mode changes.
 
+## Persistence (SQLite, web-parity)
+- `db/` mirrors web `web/src/db/repository.ts`: `types.ts` (records + 12 seeded high scores), `repository.native.ts` (expo-sqlite, `worlddomination.db`), `repository.ts` (AsyncStorage-JSON fallback with identical API — used by Expo **web** preview because expo-sqlite's OPFS backend can't run behind the proxied iframe), `migrate.ts` (one-time legacy AsyncStorage import; marker key `worlddomination.dbMigrated`; legacy keys preserved).
+- **Keep both repository files' exports in lockstep** — Metro picks `.native.ts` on iOS/Android, tsc/web use `repository.ts`.
+- GameContext: debounced autosave (400ms) via `saveCampaignState`, but on `phase === 'gameOver'` it instead calls `recordCompletedCampaign` once (ref-guarded) — that archives the campaign, bumps `commander_stats`, and deletes the save slot. Don't autosave a gameOver state or the slot resurrects.
+- Tournament table extends web schema with `records_json` + `score_submitted` (mobile keeps per-game records; web doesn't). High score submitted once per run: on elimination/completion in `recordResult`, or on resign in `endTournament` (games completed = records.length, minus the elimination game).
+- Records screen (`app/records.tsx`) = Hall of Records (ledger stats, top-10 commanders, campaign archive); the 12-slot high-score ledger lives on the tournament screen (web parity). Both refresh via `useFocusEffect`.
+
 ## Tournament system
-- `context/TournamentContext.tsx` — `TournamentSession` persisted to AsyncStorage (`worlddomination.tournament`). Tracks `humanName`, `currentGame` (0-based index), `totalPoints`, `records[]`.
+- `context/TournamentContext.tsx` — `TournamentSession` persisted via `db/repository`. Tracks `humanName`, `currentGame` (0-based index), `totalPoints`, `records[]`, `scoreSubmitted`.
 - `app/tournament.tsx` — full screen: pre-tournament name entry + game list + score bar + final rating (LIEUTENANT → EMPEROR).
 - `sessionEnded()` — returns true if eliminated or all 16 games played.
 - Flow: tournament screen → `buildTournamentSetup()` → `startGame()` → game → on gameOver, `tournamentResult()` → `recordResult()` → back to tournament screen.
@@ -83,5 +90,4 @@ React Native uses `textShadow: "0 0 12px #color"` (string shorthand, web-style).
 - Palette in `constants/colors.ts` re-valued to the web build: walnut bg #251a13, parchment text #ede0c0, gold #debe73, parchment sea #e7d8b1, ink stroke #362516, plus parchment scale / ink / gold / crimson ramps. Legacy key names kept so existing components didn't need edits.
 
 ## Outstanding gaps
-1. SQLite persistence (records/stats/high-scores) — web uses sql.js+IndexedDB; mobile still on AsyncStorage. Queued as its own task.
-2. Premium/paywall (RevenueCat) — **user cancelled this work; do not reintroduce it.**
+1. Premium/paywall (RevenueCat) — **user cancelled this work; do not reintroduce it.**

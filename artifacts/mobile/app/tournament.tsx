@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   Alert,
   Pressable,
@@ -10,8 +10,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Colors } from '@/constants/colors';
+import { listHighScores } from '@/db/repository';
+import type { HighScoreRecord } from '@/db/types';
 import {
   sessionEnded,
   useTournament,
@@ -39,6 +41,22 @@ export default function TournamentScreen() {
   const { session, loading, startTournament, endTournament } = useTournament();
   const { startGame } = useGame();
   const [nameInput, setNameInput] = useState('');
+  const [scores, setScores] = useState<HighScoreRecord[]>([]);
+
+  // Refresh the ledger on focus and whenever the session changes (score banked).
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      listHighScores()
+        .then((s) => {
+          if (active) setScores(s);
+        })
+        .catch(() => {});
+      return () => {
+        active = false;
+      };
+    }, [session]),
+  );
 
   if (loading) return null;
 
@@ -52,6 +70,7 @@ export default function TournamentScreen() {
             <Text style={styles.backText}>← Main Menu</Text>
           </Pressable>
 
+          <ScrollView contentContainerStyle={styles.startScroll} showsVerticalScrollIndicator={false}>
           <View style={styles.heroBlock}>
             <Text style={styles.heroLabel}>MDCCCXII</Text>
             <Text style={styles.heroTitle}>TOURNAMENT</Text>
@@ -87,7 +106,10 @@ export default function TournamentScreen() {
             </Pressable>
           </View>
 
+          <HighScoresLedger scores={scores} />
+
           <Text style={styles.footer}>150 pts per win · 20 pts per kill · 30 pts for most troops</Text>
+          </ScrollView>
         </SafeAreaView>
       </View>
     );
@@ -259,8 +281,39 @@ export default function TournamentScreen() {
               </Pressable>
             </View>
           )}
+
+          <HighScoresLedger scores={scores} />
         </ScrollView>
       </SafeAreaView>
+    </View>
+  );
+}
+
+/** The 12-slot high-score ledger, seeded with the great commanders of history. */
+function HighScoresLedger({ scores }: { scores: HighScoreRecord[] }) {
+  if (scores.length === 0) return null;
+  return (
+    <View style={styles.scoresCard}>
+      <View style={styles.scoresHeader}>
+        <Text style={styles.scoresTitle}>HIGH SCORES</Text>
+        <View style={styles.scoresRule} />
+      </View>
+      {scores.map((score, i) => (
+        <View
+          key={`${score.name}-${i}`}
+          style={[styles.scoreRow, score.isHuman && styles.scoreRowHuman]}
+        >
+          <Text style={styles.scoreRank}>{i + 1}.</Text>
+          <Text style={styles.scoreRowName} numberOfLines={1}>
+            {i === 0 ? '★ ' : ''}
+            {score.name}
+          </Text>
+          <Text style={styles.scoreKind}>{score.isHuman ? 'HUMAN' : 'AI'}</Text>
+          <Text style={styles.scoreValue}>
+            {score.score} pts · {score.gamesCompleted} games
+          </Text>
+        </View>
+      ))}
     </View>
   );
 }
@@ -354,4 +407,21 @@ const styles = StyleSheet.create({
   finalRating: { color: Colors.goldDim, fontFamily: 'Alegreya_600SemiBold', fontSize: 13, letterSpacing: 3 },
   newRunBtn: { marginTop: 8, borderWidth: 1, borderColor: Colors.border, paddingVertical: 12, paddingHorizontal: 32 },
   newRunText: { color: Colors.textMuted, fontFamily: 'Alegreya_600SemiBold', fontSize: 12, letterSpacing: 2 },
+
+  // High-score ledger
+  startScroll: { flexGrow: 1 },
+  scoresCard: {
+    marginTop: 16, marginHorizontal: 12, marginBottom: 8,
+    borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: Colors.bgCard, padding: 12, gap: 3,
+  },
+  scoresHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  scoresTitle: { color: Colors.goldDim, fontFamily: 'Alegreya_600SemiBold', fontSize: 11, letterSpacing: 3 },
+  scoresRule: { flex: 1, height: 1, backgroundColor: Colors.border },
+  scoreRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 6, paddingVertical: 5 },
+  scoreRowHuman: { borderWidth: 1, borderColor: Colors.goldDim, backgroundColor: 'rgba(222,190,115,0.08)' },
+  scoreRank: { color: Colors.gold, fontFamily: 'Alegreya_700Bold', fontSize: 11, width: 20 },
+  scoreRowName: { color: Colors.text, fontFamily: 'Alegreya_600SemiBold', fontSize: 13, flex: 1 },
+  scoreKind: { color: Colors.textMuted, fontFamily: 'Alegreya_400Regular', fontSize: 8, letterSpacing: 1.5 },
+  scoreValue: { color: Colors.textMuted, fontFamily: 'Alegreya_500Medium', fontSize: 11, width: 108, textAlign: 'right' },
 });

@@ -1,28 +1,19 @@
-import React, { createContext, useCallback, useContext, useEffect, useReducer, useRef, useState } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createGame, gameReducer, normalizeState } from '../game/engine';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { createGame, gameReducer } from '../game/engine';
+import { migrateLegacyStorage } from '../db/migrate';
+import {
+  deleteSave,
+  loadSavedState,
+  recordCompletedCampaign,
+  saveCampaignState,
+} from '../db/repository';
 import type { GameAction, GameSetup, GameState } from '../game/types';
-
-const SAVE_KEY = 'worlddomination.savegame';
-const RECORDS_KEY = 'worlddomination.records';
-
-export interface GameRecord {
-  id: string;
-  date: string;
-  playerName: string;
-  won: boolean;
-  turns: number;
-  territories: number;
-  totalPlayers: number;
-  objective: string;
-}
 
 interface GameContextValue {
   game: GameState | null;
   startGame: (setup: GameSetup) => void;
   dispatch: (action: GameAction) => void;
   abandonGame: () => void;
-  records: GameRecord[];
   loadingSave: boolean;
 }
 
@@ -30,25 +21,17 @@ const GameContext = createContext<GameContextValue | null>(null);
 
 export function GameProvider({ children }: { children: React.ReactNode }) {
   const [game, setGame] = useState<GameState | null>(null);
-  const [records, setRecords] = useState<GameRecord[]>([]);
   const [loadingSave, setLoadingSave] = useState(true);
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recordedRef = useRef(false);
 
-  // Load saved game and records on mount
+  // Migrate legacy AsyncStorage saves, then restore the campaign from the DB.
   useEffect(() => {
     async function load() {
       try {
-        const [savedGame, savedRecords] = await Promise.all([
-          AsyncStorage.getItem(SAVE_KEY),
-          AsyncStorage.getItem(RECORDS_KEY),
-        ]);
-        if (savedGame) {
-          const parsed = JSON.parse(savedGame) as GameState;
-          setGame(normalizeState(parsed));
-        }
-        if (savedRecords) {
-          setRecords(JSON.parse(savedRecords) as GameRecord[]);
-        }
+        await migrateLegacyStorage();
+        const saved = await loadSavedState();
+        if (saved) setGame(saved);
       } catch {
         // Corrupted save — ignore
       } finally {
@@ -58,13 +41,20 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     void load();
   }, []);
 
-  // Auto-save whenever game changes (debounced)
+  // Autosave every state change (debounced); archive the campaign once it ends.
   useEffect(() => {
     if (!game) return;
+    if (game.phase === 'gameOver') {
+      if (recordedRef.current) return;
+      recordedRef.current = true;
+      void recordCompletedCampaign(game).catch(() => {});
+      return;
+    }
+    recordedRef.current = false;
     if (saveTimeout.current) clearTimeout(saveTimeout.current);
     saveTimeout.current = setTimeout(() => {
-      AsyncStorage.setItem(SAVE_KEY, JSON.stringify(game)).catch(() => {});
-    }, 500);
+      saveCampaignState(game).catch(() => {});
+    }, 400);
     return () => {
       if (saveTimeout.current) clearTimeout(saveTimeout.current);
     };
@@ -83,33 +73,12 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const abandonGame = useCallback(async () => {
-    if (game) {
-      // Save a record if game is over
-      if (game.phase === 'gameOver') {
-        const human = game.players.find((p) => p.isHuman);
-        if (human) {
-          const record: GameRecord = {
-            id: `${Date.now()}`,
-            date: new Date().toLocaleDateString(),
-            playerName: human.name,
-            won: game.winner === human.id,
-            turns: game.turn,
-            territories: game.activeIds.filter((id) => game.territories[id].owner === human.id).length,
-            totalPlayers: game.players.length,
-            objective: game.setup.objective,
-          };
-          const newRecords = [record, ...records].slice(0, 50);
-          setRecords(newRecords);
-          await AsyncStorage.setItem(RECORDS_KEY, JSON.stringify(newRecords)).catch(() => {});
-        }
-      }
-    }
     setGame(null);
-    await AsyncStorage.removeItem(SAVE_KEY).catch(() => {});
-  }, [game, records]);
+    await deleteSave().catch(() => {});
+  }, []);
 
   return (
-    <GameContext.Provider value={{ game, startGame, dispatch, abandonGame, records, loadingSave }}>
+    <GameContext.Provider value={{ game, startGame, dispatch, abandonGame, loadingSave }}>
       {children}
     </GameContext.Provider>
   );
