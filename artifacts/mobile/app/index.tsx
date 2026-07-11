@@ -1,18 +1,72 @@
-import React from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View, Text, StyleSheet, Pressable, Image as RNImage,
   ActivityIndicator, ScrollView,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useGame } from '@/context/GameContext';
+import { loadSaveSummary } from '@/db/repository';
+import type { SaveSummary } from '@/db/repository';
+import { OBJECTIVE_INFO } from '@/game/types';
 import { Colors } from '@/constants/colors';
 import { ART } from '@/lib/art';
+
+/** "Saved …" caption: relative for the recent past, date for older saves. */
+function formatSavedAt(iso: string): string | null {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return null;
+  const diffMs = Date.now() - t;
+  const min = Math.floor(diffMs / 60000);
+  if (min < 1) return 'saved just now';
+  if (min < 60) return `saved ${min} min ago`;
+  const hours = Math.floor(min / 60);
+  if (hours < 24) return `saved ${hours} hr ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return 'saved yesterday';
+  if (days < 7) return `saved ${days} days ago`;
+  return `saved ${new Date(t).toLocaleDateString()}`;
+}
 
 export default function HomeScreen() {
   const router = useRouter();
   const { game, loadingSave, abandonGame } = useGame();
+  const [summary, setSummary] = useState<SaveSummary | null>(null);
+
+  // Refresh the save-slot metadata each time the menu regains focus, so the
+  // "last saved" caption tracks the autosave that runs during play.
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      loadSaveSummary()
+        .then((s) => {
+          if (!cancelled) setSummary(s);
+        })
+        .catch(() => {});
+      return () => {
+        cancelled = true;
+      };
+    }, []),
+  );
+
+  // Mirrors the web main menu: prefer the live game, fall back to the stored
+  // save-slot summary; the saved-at timestamp only exists in the summary.
+  const activeGame = game && game.phase !== 'gameOver' ? game : null;
+  const continueMeta = activeGame
+    ? {
+        turn: activeGame.turn,
+        objective: OBJECTIVE_INFO[activeGame.setup.objective]?.name ?? 'Campaign',
+        names: activeGame.players.filter((p) => p.alive).map((p) => p.name),
+      }
+    : summary
+      ? {
+          turn: summary.turn,
+          objective: OBJECTIVE_INFO[summary.objective]?.name ?? 'Campaign',
+          names: summary.playerNames,
+        }
+      : null;
+  const savedAt = summary?.updatedAt ? formatSavedAt(summary.updatedAt) : null;
 
   if (loadingSave) {
     return (
@@ -64,10 +118,15 @@ export default function HomeScreen() {
 
         {/* Menu buttons */}
         <View style={styles.menu}>
-          {game && (
+          {game && continueMeta && (
             <MenuButton
               label="Continue Campaign"
-              sub={`Turn ${game.turn} · ${game.phase}`}
+              sub={`Turn ${continueMeta.turn} — ${continueMeta.objective}`}
+              subLines={[
+                continueMeta.names.slice(0, 3).join(', ')
+                  + (continueMeta.names.length > 3 ? '…' : ''),
+                ...(savedAt ? [savedAt] : []),
+              ]}
               primary
               onPress={() => router.push('/game')}
             />
@@ -110,10 +169,11 @@ export default function HomeScreen() {
 }
 
 function MenuButton({
-  label, sub, onPress, primary, danger,
+  label, sub, subLines, onPress, primary, danger,
 }: {
   label: string;
   sub?: string;
+  subLines?: string[];
   onPress: () => void;
   primary?: boolean;
   danger?: boolean;
@@ -132,6 +192,11 @@ function MenuButton({
         {label}
       </Text>
       {sub && <Text style={styles.btnSub}>{sub}</Text>}
+      {subLines?.filter(Boolean).map((line, i) => (
+        <Text key={i} style={styles.btnSubLine} numberOfLines={1}>
+          {line}
+        </Text>
+      ))}
     </Pressable>
   );
 }
@@ -221,6 +286,13 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontFamily: 'Alegreya_400Regular',
     marginTop: 4,
+  },
+  btnSubLine: {
+    color: Colors.textMuted,
+    fontSize: 11,
+    fontFamily: 'Alegreya_400Regular_Italic',
+    marginTop: 2,
+    maxWidth: 280,
   },
   footer: {
     color: Colors.textMuted,
