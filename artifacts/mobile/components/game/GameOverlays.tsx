@@ -328,9 +328,9 @@ function StatItem({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: '#000000aa', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', alignItems: 'center', padding: 24 },
   sheet: {
-    backgroundColor: Colors.bgModal, borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: 'rgba(21,13,9,0.93)', borderWidth: 1, borderColor: 'rgba(222,190,115,0.35)',
     padding: 24, gap: 14, width: '100%', maxWidth: 400,
   },
   victorySheet: { gap: 16 },
@@ -365,7 +365,7 @@ const styles = StyleSheet.create({
   toastWrap: { position: 'absolute', left: 0, right: 0, bottom: 178, alignItems: 'center', zIndex: 30 },
   toast: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: 'rgba(21,13,9,0.94)', borderWidth: 1, borderColor: 'rgba(222,190,115,0.5)',
+    backgroundColor: 'rgba(21,13,9,0.86)', borderWidth: 1, borderColor: 'rgba(222,190,115,0.5)',
     paddingVertical: 10, paddingLeft: 14, paddingRight: 10, maxWidth: '92%',
   },
   toastTextBlock: { gap: 6, flexShrink: 1 },
@@ -404,7 +404,7 @@ const styles = StyleSheet.create({
   primaryBtnText: { color: Colors.bg, fontFamily: 'Alegreya_700Bold', fontSize: 14, letterSpacing: 3 },
 
   // Dispatch log
-  dispatchSheet: { backgroundColor: Colors.bgModal, borderTopWidth: 1, borderTopColor: Colors.border, maxHeight: '70%' },
+  dispatchSheet: { backgroundColor: 'rgba(21,13,9,0.96)', borderTopWidth: 1, borderTopColor: Colors.border, maxHeight: '70%' },
   dispatchHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16 },
   title: { color: Colors.gold, fontFamily: 'Alegreya_700Bold', fontSize: 14, letterSpacing: 3 },
   closeText: { color: Colors.textMuted, fontSize: 18, padding: 4 },

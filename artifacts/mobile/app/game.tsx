@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useGame } from '@/context/GameContext';
@@ -21,6 +21,7 @@ import { PhaseBanner } from '@/components/game/PhaseBanner';
 import GamePanel, { type StagedMove } from '@/components/game/GamePanel';
 import PlayerRoster from '@/components/game/PlayerRoster';
 import { TransientBattleReport } from '@/components/game/BattleReport';
+import { EventTicker } from '@/components/game/EventTicker';
 import CardHand from '@/components/game/CardHand';
 import { BattleView } from '@/components/game/BattleView';
 import {
@@ -88,6 +89,11 @@ function CampaignScreen({ game }: { game: GameState }) {
   const [logOpen, setLogOpen] = useState(false);
   const [viewMode, setViewMode] = useState<MapViewMode>('board');
 
+  // Landscape: the map spans the full width, chrome docks right (RISK II
+  // keeps the board full-bleed — the panel must never eat the map).
+  const { width: winW, height: winH } = useWindowDimensions();
+  const isLandscape = winW > winH;
+
   const player = game.players[game.currentPlayer];
   const isHumanTurn = player?.isHuman ?? false;
   const isHumanActive = isHumanTurn && !game.awaitingHandoff && !game.pendingProposal;
@@ -105,7 +111,13 @@ function CampaignScreen({ game }: { game: GameState }) {
       }, 100);
       return () => clearTimeout(timer);
     }
-    const delay = game.phase === 'initialDeploy' || game.phase === 'territoryGrab' ? 100 : 180;
+    // Attack orders get a longer beat so each on-map arrow reads clearly.
+    const delay =
+      game.phase === 'initialDeploy' || game.phase === 'territoryGrab'
+        ? 100
+        : game.phase === 'attack'
+          ? 260
+          : 180;
     const timer = setTimeout(() => {
       const action = aiNextAction(game);
       if (action) rawDispatch(action);
@@ -336,7 +348,7 @@ function CampaignScreen({ game }: { game: GameState }) {
       </View>
 
       {/* Continent bonuses — screen-space so map panning can't slice it */}
-      <View style={styles.legendOverlay} pointerEvents="none">
+      <View style={[styles.legendOverlay, isLandscape && styles.legendOverlayLandscape]} pointerEvents="none">
         <ContinentLegend />
       </View>
 
@@ -370,7 +382,18 @@ function CampaignScreen({ game }: { game: GameState }) {
       <PhaseBanner game={game} />
 
       {/* Floating bottom chrome */}
-      <SafeAreaView edges={['bottom']} style={styles.bottomChrome} pointerEvents="box-none">
+      <SafeAreaView
+        edges={isLandscape ? ['bottom', 'right'] : ['bottom']}
+        style={isLandscape ? styles.bottomChromeLandscape : styles.bottomChrome}
+        pointerEvents="box-none"
+      >
+        {/* War dispatches — translucent ticker, the original's scrolling readout */}
+        {game.phase !== 'gameOver' && (
+          <View style={styles.tickerWrap} pointerEvents="none">
+            <EventTicker game={game} />
+          </View>
+        )}
+
         {/* Battle report (inline, shown above panel) — auto-hides after a beat */}
         {game.phase === 'attack' && (
           <TransientBattleReport game={game} style={styles.battleContainer} />
@@ -381,7 +404,7 @@ function CampaignScreen({ game }: { game: GameState }) {
 
         {/* Bottom action panel */}
         {game.phase !== 'gameOver' && (
-          <View style={styles.bottomBar}>
+          <View style={[styles.bottomBar, isLandscape && styles.bottomBarLandscape]}>
             <GamePanel
               game={game}
               selected={selected}
@@ -440,6 +463,7 @@ function CampaignScreen({ game }: { game: GameState }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
   legendOverlay: { position: 'absolute', left: 10, bottom: 128, zIndex: 5 },
+  legendOverlayLandscape: { bottom: 10 },
   topBar: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 },
   viewRail: { alignItems: 'flex-start', paddingLeft: 8, paddingTop: 8, gap: 6 },
   viewModeBtn: {
@@ -449,10 +473,18 @@ const styles = StyleSheet.create({
   },
   viewModeText: { color: Colors.gold, fontFamily: 'Alegreya_600SemiBold', fontSize: 9, letterSpacing: 2 },
   bottomChrome: { position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 10 },
+  bottomChromeLandscape: {
+    position: 'absolute', bottom: 0, right: 0, zIndex: 10,
+    width: 348, paddingRight: 6, paddingBottom: 6,
+  },
+  tickerWrap: { paddingHorizontal: 12, marginBottom: 2 },
   battleContainer: { paddingHorizontal: 12, paddingVertical: 4 },
   bottomBar: {
-    backgroundColor: 'rgba(37,26,19,0.94)',
+    backgroundColor: 'rgba(21,13,9,0.68)',
     borderTopWidth: 1, borderTopColor: 'rgba(222,190,115,0.28)',
+  },
+  bottomBarLandscape: {
+    borderWidth: 1, borderColor: 'rgba(222,190,115,0.3)',
   },
 
   // Election (parchment field panel)
@@ -470,7 +502,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 0, top: 0, bottom: 0,
     width: 240,
-    backgroundColor: Colors.bgModal,
+    backgroundColor: 'rgba(21,13,9,0.92)',
     borderLeftWidth: 1, borderLeftColor: Colors.border,
     padding: 12,
     gap: 12,

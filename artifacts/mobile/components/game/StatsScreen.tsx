@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { Dimensions, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import Svg, { Circle, Line as SvgLine, Polyline } from "react-native-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors } from "@/constants/colors";
@@ -12,8 +12,6 @@ import type { GameState, TurnSnapshot } from "@/game/types";
  * from the engine's per-round history snapshots.
  */
 
-const { width: SW } = Dimensions.get("window");
-
 type Metric = "territories" | "troops";
 
 const METRICS: Array<{ key: Metric; label: string }> = [
@@ -21,7 +19,6 @@ const METRICS: Array<{ key: Metric; label: string }> = [
   { key: "troops", label: "ARMIES" },
 ];
 
-const CHART_W = Math.min(SW, 430) - 72;
 const CHART_H = 200;
 
 export function StatsScreen({
@@ -34,6 +31,10 @@ export function StatsScreen({
   onClose: () => void;
 }) {
   const [metric, setMetric] = useState<Metric>("territories");
+
+  // Chart width tracks the live window — rotation-safe.
+  const { width: sw } = useWindowDimensions();
+  const CHART_W = Math.min(sw, 430) - 72;
 
   // History snapshots plus a live "now" point so the graph reaches the end
   // of the campaign. Campaigns saved before history existed chart from the

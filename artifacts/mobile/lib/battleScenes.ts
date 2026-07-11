@@ -70,8 +70,8 @@ export const SCENE_TIMINGS: Record<
   Exclude<BattleSceneMode, "off">,
   { preRoll: number; hold: number; volleyAt: number; trumpetAt: number }
 > = {
-  full: { preRoll: 700, hold: 3000, volleyAt: 260, trumpetAt: 1280 },
-  fast: { preRoll: 220, hold: 1400, volleyAt: 200, trumpetAt: 620 },
+  full: { preRoll: 550, hold: 2500, volleyAt: 240, trumpetAt: 1130 },
+  fast: { preRoll: 200, hold: 1150, volleyAt: 180, trumpetAt: 600 },
 };
 
 /**

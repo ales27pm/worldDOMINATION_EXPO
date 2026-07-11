@@ -87,14 +87,14 @@ export function PhaseBanner({ game }: { game: GameState }) {
 const styles = StyleSheet.create({
   wrap: {
     position: 'absolute',
-    top: 118,
+    top: '13%',
     left: 0,
     right: 0,
     alignItems: 'center',
     zIndex: 9,
   },
   banner: {
-    backgroundColor: 'rgba(21,13,9,0.92)',
+    backgroundColor: 'rgba(21,13,9,0.86)',
     borderWidth: 1,
     borderColor: 'rgba(222,190,115,0.55)',
     paddingHorizontal: 18,

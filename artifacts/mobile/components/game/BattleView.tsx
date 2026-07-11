@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Dimensions,
   Image,
   Modal,
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import Svg, { Line, Polygon } from "react-native-svg";
@@ -22,8 +22,6 @@ import { TERRITORY_MAP } from "@/game/mapData";
 import type { BattleReport, DiceTier, GameState } from "@/game/types";
 import { RiskDie } from "./RiskDie";
 import { PieceIcon } from "./PieceSprite";
-
-const { width: SW, height: SH } = Dimensions.get("window");
 
 /**
  * Cinematic battle view, rebuilt to the original RISK II attack screen:
@@ -48,11 +46,6 @@ const DEFEND_SLOTS: Array<[number, number]> = [
   [0.665, 0.560], [0.780, 0.554], [0.575, 0.556],
 ];
 
-const INF_W = SW * 0.074;
-const INF_H = (INF_W * 31) / 18; // MAP_PIECE_BOX aspect
-const CAV_W = SW * 0.148;
-const CAV_H = (CAV_W * 40) / 38;
-
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 interface Props {
@@ -61,9 +54,20 @@ interface Props {
 
 export function BattleView({ game }: Props) {
   const sceneMode = useBattleSceneMode();
+  // Sprite sizing tracks the live window — rotation-safe.
+  const { width: SW, height: SH } = useWindowDimensions();
+  const INF_W = SW * 0.074;
+  const INF_H = (INF_W * 31) / 18; // MAP_PIECE_BOX aspect
+  const CAV_W = SW * 0.148;
+  const CAV_H = (CAV_W * 40) / 38;
   const [scene, setScene] = useState<BattleReport | null>(null);
   const [phase, setPhase] = useState<"ready" | "rolled">("ready");
-  const lastReportRef = useRef<BattleReport | null>(null);
+  // Battles are keyed by the monotonic battlesFought counter — the reducer
+  // deep-clones state every dispatch, so lastBattle's identity churns even
+  // when no new battle happened (e.g. the occupy auto-advance would replay
+  // the scene under identity keying). Seeded with the mount-time counter so
+  // a restored save doesn't replay its final battle.
+  const seenBattleRef = useRef<number>(game.battlesFought);
   const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stopFns = useRef<Array<() => void>>([]);
   const soundTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -89,8 +93,8 @@ export function BattleView({ game }: Props) {
   // ground is lost or a capital is contested; never with scenes off).
   useEffect(() => {
     const report = game.lastBattle;
-    if (!report || report === lastReportRef.current) return;
-    lastReportRef.current = report;
+    if (!report || game.battlesFought === seenBattleRef.current) return;
+    seenBattleRef.current = game.battlesFought;
 
     if (!shouldShowBattleScene(game, report, sceneMode)) return;
 
@@ -310,6 +314,7 @@ function Plaque({
   tier: DiceTier;
   losses: number;
 }) {
+  const { width: sw } = useWindowDimensions();
   return (
     <View style={styles.plaqueRow}>
       {count !== null && (
@@ -330,7 +335,7 @@ function Plaque({
           <View style={styles.trayIdle} />
         )}
       </View>
-      <View style={[styles.nameBar, { backgroundColor: color }]}>
+      <View style={[styles.nameBar, { backgroundColor: color, maxWidth: sw * 0.42 }]}>
         <Text style={styles.nameText} numberOfLines={1}>
           {name}
         </Text>
@@ -341,9 +346,10 @@ function Plaque({
 
 /** Thick attacker-coloured arrow from the attacker plaque to the defender's. */
 function AttackArrow({ color }: { color: string }) {
-  const sx = SW * 0.28;
+  const { width: sw } = useWindowDimensions();
+  const sx = sw * 0.28;
   const sy = 178;
-  const ex = SW * 0.62;
+  const ex = sw * 0.62;
   const ey = 292;
   const ang = Math.atan2(ey - sy, ex - sx);
   const cos = Math.cos(ang);
@@ -470,7 +476,6 @@ const styles = StyleSheet.create({
   nameBar: {
     justifyContent: "center",
     minWidth: 92,
-    maxWidth: SW * 0.42,
     paddingLeft: 10,
     paddingRight: 16,
     paddingVertical: 5,

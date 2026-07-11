@@ -12,14 +12,16 @@ interface Props {
 }
 
 /** How long the recap card lingers on screen after a battle. */
-const LINGER_MS = 5000;
+const LINGER_MS = 6500;
 
 /**
- * Auto-hiding wrapper for the LAST BATTLE card: each new battle surfaces the
- * recap, it lingers a few seconds, then clears so the map stays visible.
- * Tap dismisses it early. The countdown pauses while the cinematic battle
- * modal covers the screen (same visibility store the occupy toast uses).
- * The engine's `lastBattle` state is untouched — this is display-only.
+ * Auto-hiding wrapper for the LAST BATTLE card. Only battles involving the
+ * human surface it — enemy skirmishes are narrated by the on-map arrows and
+ * the ticker instead, keeping the chrome light during AI turns. The card
+ * snapshots its report (the engine clears `lastBattle` at turn advance) and
+ * its countdown pauses while the cinematic covers the screen or an occupy
+ * decision is pending, so the recap is still readable afterwards. Tap
+ * dismisses it early. Display-only — engine state is untouched.
  */
 export function TransientBattleReport({
   game,
@@ -29,36 +31,48 @@ export function TransientBattleReport({
   style?: StyleProp<ViewStyle>;
 }) {
   const report = game.phase === "attack" ? game.lastBattle : null;
+  const involvesHuman =
+    report != null &&
+    (game.players[report.attacker]?.isHuman || game.players[report.defender]?.isHuman);
   // The reducer deep-clones state on every dispatch, so the report's object
   // identity changes even when no new battle happened (e.g. the occupy
   // auto-advance). Key each battle by the monotonic battlesFought counter
   // instead, or unrelated dispatches would re-surface a dismissed card.
-  const battleKey = report ? game.battlesFought : null;
+  const battleKey = involvesHuman ? game.battlesFought : null;
   const sceneVisible = useBattleSceneVisible();
-  const [shownKey, setShownKey] = useState<number | null>(null);
+  const occupyPending = game.pendingOccupy != null;
+  const [shown, setShown] = useState<{ key: number; report: BattleReport } | null>(null);
 
   // A new battle re-surfaces the card, even if the previous one was
-  // dismissed; leaving the attack phase clears it.
+  // dismissed; leaving the attack phase clears it. AI-vs-AI battles neither
+  // surface nor clear it.
   useEffect(() => {
-    setShownKey(battleKey);
-  }, [battleKey]);
+    if (game.phase !== "attack") {
+      setShown(null);
+      return;
+    }
+    if (battleKey !== null && report) setShown({ key: battleKey, report });
+    // report is keyed by battleKey — its identity churns on every dispatch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [battleKey, game.phase]);
 
-  // Linger countdown — only ticks while the card is actually visible.
+  // Linger countdown — only ticks while the card is actually readable (not
+  // under the battle cinematic, not during an occupy decision).
   useEffect(() => {
-    if (shownKey === null || sceneVisible) return;
-    const timer = setTimeout(() => setShownKey(null), LINGER_MS);
+    if (!shown || sceneVisible || occupyPending) return;
+    const timer = setTimeout(() => setShown(null), LINGER_MS);
     return () => clearTimeout(timer);
-  }, [shownKey, sceneVisible]);
+  }, [shown, sceneVisible, occupyPending]);
 
-  if (shownKey === null || !report) return null;
+  if (!shown) return null;
   return (
     <Pressable
       style={style}
-      onPress={() => setShownKey(null)}
+      onPress={() => setShown(null)}
       accessibilityRole="button"
       accessibilityLabel="Dismiss battle report"
     >
-      <BattleReportCard battle={report} game={game} />
+      <BattleReportCard battle={shown.report} game={game} />
     </Pressable>
   );
 }
@@ -132,9 +146,9 @@ export default function BattleReportCard({ battle, game }: Props) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: Colors.bgCard,
+    backgroundColor: 'rgba(21,13,9,0.8)',
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: 'rgba(222,190,115,0.35)',
     padding: 10,
     gap: 8,
   },

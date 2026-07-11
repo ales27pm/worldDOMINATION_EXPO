@@ -13,6 +13,7 @@ import Svg, {
 } from 'react-native-svg';
 import { WORLD_BOARD } from '@/lib/gameArt';
 import { MapPiece } from '@/components/game/PieceSprite';
+import { BattleArrowLayer } from '@/components/game/BattleArrowLayer';
 import { borderThreat, largestEmpire } from '@/game/analysis';
 import { activeTerritories, CONTINENTS, TERRITORY_MAP } from '@/game/mapData';
 import { TERRITORY_PATHS } from '@/game/mapShapes';
@@ -532,6 +533,9 @@ export const WorldBoard = React.memo(function WorldBoard({
           </View>
         );
       })}
+
+      {/* Transient attack-order arrows — board space, over the figures */}
+      <BattleArrowLayer game={game} w={W} h={H} />
 
       {/* Double map frame */}
       <Svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={styles.svg} pointerEvents="none">

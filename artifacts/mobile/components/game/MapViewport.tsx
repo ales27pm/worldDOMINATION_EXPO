@@ -47,6 +47,9 @@ interface MapViewportProps {
 
 export function MapViewport({ game, selected, onBoardTap, children }: MapViewportProps) {
   const [layout, setLayout] = useState({ w: 0, h: 0 });
+  // In landscape the command chrome docks bottom-right, so the control
+  // cluster moves beside it instead of underneath it.
+  const isLandscape = layout.w > layout.h;
   const modeRef = useRef<'auto' | 'manual'>('auto');
   const [, forceRender] = useState(0);
   const setMode = useCallback((m: 'auto' | 'manual') => {
@@ -337,7 +340,7 @@ export function MapViewport({ game, selected, onBoardTap, children }: MapViewpor
       </GestureDetector>
 
       {/* Control cluster — Auto / Zoom in / Zoom out / Full board */}
-      <View style={styles.cluster} pointerEvents="box-none">
+      <View style={[styles.cluster, isLandscape && styles.clusterLandscape]} pointerEvents="box-none">
         <ClusterButton label="⌖" active={auto} onPress={engageAuto} accessibilityLabel="Auto camera" />
         <ClusterButton label="+" onPress={() => zoomBy(1 / BUTTON_ZOOM)} accessibilityLabel="Zoom in" />
         <ClusterButton label="−" onPress={() => zoomBy(BUTTON_ZOOM)} accessibilityLabel="Zoom out" />
@@ -382,6 +385,11 @@ const styles = StyleSheet.create({
     // Clear the floating bottom command panel.
     bottom: 128,
     gap: 6,
+  },
+  clusterLandscape: {
+    // Sit beside the right-docked command column, not behind it.
+    right: 372,
+    bottom: 10,
   },
   clusterBtn: {
     width: 34,

@@ -311,9 +311,7 @@ function phaseLabel(phase: string): string {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: Colors.bgCard,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
+    backgroundColor: 'transparent',
     paddingHorizontal: 12,
     paddingTop: 8,
     paddingBottom: 4,
@@ -342,7 +340,7 @@ const styles = StyleSheet.create({
   allOutRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   checkBox: {
     width: 22, height: 22, borderWidth: 1, borderColor: Colors.border,
-    backgroundColor: Colors.bgCard, justifyContent: 'center', alignItems: 'center',
+    backgroundColor: 'rgba(53,37,25,0.72)', justifyContent: 'center', alignItems: 'center',
   },
   checkBoxActive: { borderColor: Colors.gold, backgroundColor: Colors.gold + '33' },
   checkText: { color: Colors.textMuted, fontSize: 14, fontFamily: 'Alegreya_700Bold' },
@@ -351,10 +349,10 @@ const styles = StyleSheet.create({
   attackHint: { color: Colors.textMuted, fontFamily: 'Alegreya_400Regular', fontSize: 12 },
   stagedLabel: { color: Colors.text, fontFamily: 'Alegreya_600SemiBold', fontSize: 13 },
   btn: {
-    borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.bgCard,
+    borderWidth: 1, borderColor: Colors.border, backgroundColor: 'rgba(53,37,25,0.72)',
     paddingVertical: 10, paddingHorizontal: 14, alignItems: 'center',
   },
-  btnGold: { borderColor: Colors.gold, backgroundColor: '#2a1d08' },
+  btnGold: { borderColor: Colors.gold, backgroundColor: 'rgba(42,29,8,0.85)' },
   btnDisabled: { borderColor: Colors.disabled, backgroundColor: Colors.disabled },
   btnText: { color: Colors.text, fontFamily: 'Alegreya_600SemiBold', fontSize: 13, letterSpacing: 1 },
   btnTextGold: { color: Colors.gold },
@@ -362,7 +360,7 @@ const styles = StyleSheet.create({
   stepper: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   stepBtn: {
     width: 32, height: 32, justifyContent: 'center', alignItems: 'center',
-    borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.bgCard,
+    borderWidth: 1, borderColor: Colors.border, backgroundColor: 'rgba(53,37,25,0.72)',
   },
   stepBtnText: { color: Colors.text, fontFamily: 'Alegreya_700Bold', fontSize: 18 },
   stepValue: { color: Colors.gold, fontFamily: 'Alegreya_700Bold', fontSize: 20, minWidth: 36, textAlign: 'center' },

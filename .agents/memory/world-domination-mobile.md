@@ -87,13 +87,18 @@ Use the classic three-prop form (`textShadowColor`/`textShadowOffset`/`textShado
 **Any new GameState field must get a default in `normalizeState()` AND be copied in `cloneState()`** — saves are long-lived JSON; missing either breaks old saves or silently drops state.
 
 **Reducer identity invariants (verified Jul 2026):**
-- `cloneState` runs on EVERY dispatch, so nested objects (e.g. `lastBattle`) get fresh references on every action. UI "new event" detection must key on monotonic counters (`battlesFought`), never object identity — identity-keyed effects re-fire on unrelated dispatches (the occupy auto-advance kept resurrecting a dismissed battle card this way).
+- `cloneState` runs on EVERY dispatch, so nested objects (e.g. `lastBattle`) get fresh references on every action. UI "new event" detection must key on monotonic counters (`battlesFought`), never object identity — identity-keyed effects re-fire on unrelated dispatches (the occupy auto-advance kept resurrecting a dismissed battle card this way). All three battle-event consumers (scene modal, on-map arrow layer, recap card) were audited onto counter keying in Jul 2026; any NEW battle-reactive UI must do the same, and seed its ref with the mount-time counter so restored saves don't replay their final battle.
 - AI freeze hazard: the AI loop only re-ticks when dispatch produces a new state reference. If `aiNextAction` ever emits an action a reducer guard rejects (returns `previous`), React bails out and the AI freezes permanently. When adding AI actions or tightening reducer guards, keep the pair consistent (audited stall-free Jul 2026).
 
 ## Turn-flow conventions (Jul 2026 redesign)
 - Deploy = tap-to-place (DEPLOY count:1 per map tap) + UNDO_DEPLOY (reads `deployLog`); FORTIFY sets `fortifyUsed`, **never ends the turn** — human and AI must dispatch END_TURN explicitly (`game/ai.ts` does when `fortifyUsed`).
 - Battle scene pacing is a persisted user setting (`lib/battleScenes.ts`, AsyncStorage `risk2.battleScenes`, full/fast/off). Human-defender scenes only when a territory is lost or a capital is contested; everything else is percussion via `useGameSounds`.
 - Overlay sequencing: BattleView publishes visibility through the scene-visibility store in `lib/battleScenes.ts`; the occupy auto-advance toast (`OccupyFlow` in GameOverlays) gates its countdown on it. New overlays that could collide with the battle Modal should use the same store instead of guessing with timers.
+- Transient auto-hiding UI (recap card etc.) must PAUSE its linger while any covering step is active (scene visible OR `pendingOccupy` set) and snapshot its data — otherwise the countdown burns underneath the cinematic/occupy step and the element expires before the player can read it (root cause of the "vanishing LAST BATTLE card", Jul 2026). Battle theatre split: cinematic per `shouldShowBattleScene`; everything else gets the on-map arrow + ticker line; never both for one battle.
+
+## Landscape & translucent chrome (Jul 2026)
+- App orientation is "default" (rotation unlocked app-wide); game chrome is translucent and docks as a ~348px bottom-right column in landscape (portrait: full-width bottom band). Screens must derive sizes from `useWindowDimensions` INSIDE components — never module-scope `Dimensions.get` (breaks rotation).
+- **Any new absolutely-positioned floating control needs a landscape variant** — the zoom cluster had to move beside the docked column (it hid behind it on short screens). Audit overlays whenever chrome layout changes.
 
 ## Fonts & theme (web parity)
 - Fonts via @expo-google-fonts: Alegreya (body, 400–800 + italics), IM Fell English (map/taglines, + italic), IM Fell English SC (display). Tokens in `constants/typography.ts` (`Fonts`, `trackingImperial(fontSize)` = 0.22em, `TextShadows`). Inter was fully removed — don't reintroduce it.
