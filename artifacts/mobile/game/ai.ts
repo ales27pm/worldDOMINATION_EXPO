@@ -3,7 +3,8 @@ import { findBestSet } from "./cards";
 import { electionBudget } from "./engine";
 import { GENERALS } from "./generals";
 import { CONTINENTS, continentTerritories, TERRITORY_MAP } from "./mapData";
-import type { AllianceLevel, ContinentId, GameAction, GameState, GeneralDef, TerritoryId } from "./types";
+import { friendlyReachableSet } from "./sameTime";
+import type { AllianceLevel, AttackOrder, ContinentId, GameAction, GameState, GeneralDef, TerritoryId } from "./types";
 
 interface AttackOption {
   from: TerritoryId;
@@ -76,6 +77,57 @@ function bestAttack(state: GameState, playerId: number, general: GeneralDef): At
   if (options.length === 0) return null;
   options.sort((a, b) => b.score - a.score);
   return options[0] ?? null;
+}
+
+/** Same Time variant of bestAttack: accounts for orders already queued this round and returns a troop commitment. */
+function bestSameTimeAttack(
+  state: GameState,
+  playerId: number,
+  general: GeneralDef,
+  orders: AttackOrder[],
+): { from: TerritoryId; to: TerritoryId; count: number } | null {
+  const minRatio = Math.max(0.85, 1.7 - general.aggression * 0.5 - general.riskTolerance * 0.4);
+  const committedByFrom = new Map<TerritoryId, number>();
+  for (const order of orders) {
+    if (order.player !== playerId) continue;
+    committedByFrom.set(order.from, (committedByFrom.get(order.from) ?? 0) + order.count);
+  }
+  let best: { from: TerritoryId; to: TerritoryId; count: number; score: number } | null = null;
+  for (const from of state.activeIds) {
+    const fromState = state.territories[from];
+    if (fromState.owner !== playerId) continue;
+    const available = fromState.armies - 1 - (committedByFrom.get(from) ?? 0);
+    if (available < 1) continue;
+    for (const to of activeNeighbors(state, from)) {
+      const toState = state.territories[to];
+      if (toState.owner === playerId) continue;
+      const alliance = allianceBetween(state, playerId, toState.owner);
+      if (alliance) {
+        const betray = Math.random() < (1 - general.honorLevel) * 0.06;
+        if (!betray) {
+          if (alliance.level >= 2) continue;
+          if (protectedByLevelOne(state, toState.owner, to)) continue;
+        }
+      }
+      const ratio = available / Math.max(1, toState.armies);
+      if (ratio < minRatio) continue;
+      let score = ratio + continentValue(state, to, playerId);
+      const grudge = state.players[playerId]?.grudges[toState.owner] ?? 0;
+      score += grudge * (0.4 + general.aggression * 0.8);
+      const target = state.players[playerId]?.mission;
+      if (target?.kind === "destroyPlayer" && toState.owner === target.targetPlayerId) score += 2;
+      if (state.setup.objective === "capital") {
+        const isCapital = state.players.some((p) => p.capital === to && p.id !== playerId);
+        if (isCapital) score += 3;
+      }
+      score += general.unpredictability * Math.random() * 2;
+      if (!best || score > best.score) {
+        const commit = Math.max(1, Math.round(available * (0.5 + general.aggression * 0.5)));
+        best = { from, to, count: Math.min(commit, available), score };
+      }
+    }
+  }
+  return best ? { from: best.from, to: best.to, count: best.count } : null;
 }
 
 /**
@@ -241,6 +293,78 @@ export function aiNextAction(state: GameState): GameAction | null {
     }
     if (best) return { type: "FORTIFY", from: best.from, to: best.to, count: best.count };
     return { type: "END_TURN" };
+  }
+
+  if (state.phase === "sameTimeReinforce") {
+    const st = state.sameTime;
+    if (!st) return null;
+    const cardRule = state.setup.cardRule ?? "ascending";
+    if (player.cards.length >= 3 && findBestSet(player.cards, cardRule) !== null) {
+      return { type: "AUTO_TRADE" };
+    }
+    const remaining = st.reinforcementsRemaining[player.id] ?? 0;
+    if (remaining > 0) {
+      const owned = state.activeIds.filter((id) => state.territories[id].owner === player.id);
+      const borders = owned.filter((id) => borderThreat(state, id, player.id) > 0);
+      const pool = borders.length > 0 ? borders : owned;
+      const scored = pool
+        .map((id) => ({
+          id,
+          score:
+            borderThreat(state, id, player.id) * (0.5 + general.aggression * 0.5) +
+            continentValue(state, id, player.id) * 2 +
+            general.unpredictability * Math.random() * 6,
+        }))
+        .sort((a, b) => b.score - a.score);
+      const pick = scored[0];
+      if (pick) {
+        const chunk = Math.max(1, Math.ceil(remaining / 2));
+        return { type: "DEPLOY", territory: pick.id, count: chunk };
+      }
+    }
+    return { type: "ST_READY_REINFORCE" };
+  }
+
+  if (state.phase === "sameTimeBattle") {
+    const st = state.sameTime;
+    if (!st) return null;
+    if (Math.random() < (1 - general.aggression) * 0.3) {
+      return { type: "ST_READY_BATTLE" };
+    }
+    const attack = bestSameTimeAttack(state, player.id, general, st.orders);
+    if (attack) {
+      return { type: "ST_QUEUE_ATTACK", from: attack.from, to: attack.to, count: attack.count, surgeTo: null };
+    }
+    return { type: "ST_READY_BATTLE" };
+  }
+
+  if (state.phase === "sameTimeMove") {
+    const st = state.sameTime;
+    if (!st) return null;
+    const owned = state.activeIds.filter((id) => state.territories[id].owner === player.id);
+    const committedByFrom = new Map<TerritoryId, number>();
+    for (const move of st.moves) {
+      if (move.player !== player.id) continue;
+      committedByFrom.set(move.from, (committedByFrom.get(move.from) ?? 0) + move.count);
+    }
+    let best: { from: TerritoryId; to: TerritoryId; count: number; score: number } | null = null;
+    for (const from of owned) {
+      const fromState = state.territories[from];
+      const available = fromState.armies - 1 - (committedByFrom.get(from) ?? 0);
+      if (available < 1) continue;
+      const fromThreat = borderThreat(state, from, player.id);
+      for (const to of friendlyReachableSet(state, player.id, from)) {
+        const toThreat = borderThreat(state, to, player.id);
+        if (toThreat <= fromThreat) continue;
+        const score = toThreat - fromThreat + fromState.armies;
+        if (!best || score > best.score) {
+          const count = fromThreat === 0 ? available : Math.floor(available / 2);
+          if (count >= 1) best = { from, to, count, score };
+        }
+      }
+    }
+    if (best) return { type: "ST_QUEUE_MOVE", from: best.from, to: best.to, count: best.count };
+    return { type: "ST_READY_MOVE" };
   }
 
   return null;

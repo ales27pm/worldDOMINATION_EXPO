@@ -11,13 +11,7 @@ description: What the World Domination mobile game already implements vs. the of
 - Continent bonuses match the Classic RISK table exactly.
 - Fortify (tactical move) restricted to single-hop border/dotted-line neighbors, one move per turn — matches manual, not a "connected chain" variant.
 
-## Not implemented — the one real gap
-"Same Time RISK" — an entirely different simultaneous-turn mode (all players submit orders each round, then a 5-tier priority resolution: border clashes → mass invasions → invasions → spoils of war → surge attacks). Requires:
-- Different reinforcement formula and continent bonus table (Same Time uses 4/4/5/6/6/8, not the Classic 2/2/3/5/5/7).
-- A 12-sided "tiered dice" system (5 colors: white/yellow/orange/red/black, keyed to army-size brackets).
+## Same Time RISK — now implemented (Jul 2026)
+The simultaneous-turn mode described below was built; see [Same Time RISK mode](same-time-risk-mode.md) for the architecture and decisions. Remaining gaps are tracked as project follow-up tasks (surge-target UI, phase banners, draw-win/elimination test coverage) rather than memory.
 
-**The tiered-D12 dice tables ARE already built** in `game/dice.ts` (`DICE_FACES`, `tierForAttacker`/`tierForDefender`) and their face-value distributions match the manual's tables exactly face-for-face — just under the name "green" instead of "orange" for the third tier, and currently unused by the live battle resolver (`resolveBattleRound` uses simple classic D6 logic). This looks like intentional groundwork for Same Time RISK that was never finished with the simultaneous-turn engine/UI around it.
-
-**Why this matters:** an explore subagent pass on this codebase claimed missions and the card-territory bonus were "not implemented" — that was wrong/stale. Always verify rule-coverage claims by reading `engine.ts`/`cards.ts`/`missions.ts`/`dice.ts` directly before trusting a summary, especially on a codebase this mature.
-
-**How to apply:** if asked to "finish" or "add" Same Time RISK, treat it as a large new game mode (new phase model, order-submission UI, priority resolver) — not a small patch — and confirm scope with the user before building.
+**Why this matters:** an explore subagent pass on this codebase once claimed missions and the card-territory bonus were "not implemented" — that was wrong/stale. Always verify rule-coverage claims by reading `engine.ts`/`cards.ts`/`missions.ts`/`dice.ts` directly before trusting a summary, especially on a codebase this mature.

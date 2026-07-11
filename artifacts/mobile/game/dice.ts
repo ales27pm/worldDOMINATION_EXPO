@@ -41,6 +41,13 @@ export function rollTier(tier: DiceTier): number {
   return faces[Math.floor(Math.random() * faces.length)] ?? 3;
 }
 
+/** Tier rank (white=1 ... black=5) — Same Time casualties equal the lower side's rank (manual, Chapter 9). */
+const TIER_RANK: Record<DiceTier, number> = { white: 1, yellow: 2, green: 3, red: 4, black: 5 };
+
+export function rankOf(tier: DiceTier): number {
+  return TIER_RANK[tier];
+}
+
 export interface BattleRound {
   attackerRolls: number[];
   defenderRolls: number[];

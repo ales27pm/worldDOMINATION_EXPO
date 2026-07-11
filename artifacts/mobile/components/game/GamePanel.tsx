@@ -53,6 +53,16 @@ export default function GamePanel({
       case 'fortify':
         if (game.fortifyUsed) return 'Tactical move complete — end the turn.';
         return 'One tactical move: select a territory, then tap a neighbour.';
+      case 'sameTimeReinforce': {
+        if (player.cards.length >= 5) return '⚠ You must trade cards before deploying.';
+        const remaining = game.sameTime?.reinforcementsRemaining[player.id] ?? 0;
+        if (remaining > 0) return `Deploy ${remaining} armies in secret — tap your territory to place.`;
+        return 'All reinforcements placed — seal your orders.';
+      }
+      case 'sameTimeBattle':
+        return 'Stage attack orders in secret. Every commander\'s orders resolve together once all are sealed.';
+      case 'sameTimeMove':
+        return 'Reposition armies through your own territory. Everyone moves at once once all confirm.';
       default: return '';
     }
   };
@@ -190,6 +200,154 @@ export default function GamePanel({
       );
     }
 
+    if (phase === 'sameTimeReinforce') {
+      const st = game.sameTime;
+      const remaining = st?.reinforcementsRemaining[player.id] ?? 0;
+      const mustTrade = player.cards.length >= 5;
+      const canUndo = (st?.deployLog[player.id]?.length ?? 0) > 0;
+      return (
+        <View style={styles.actionGroup}>
+          {mustTrade ? (
+            <ActionBtn label="Open Cards (must trade)" gold onPress={onOpenCards} />
+          ) : (
+            <>
+              {selected && selectedOwned && remaining > 1 && (
+                <ActionBtn
+                  label={`Place all here (${remaining})`}
+                  gold
+                  onPress={() => dispatch({ type: 'DEPLOY', territory: selected, count: remaining })}
+                />
+              )}
+              {(canUndo || player.cards.length > 0) && (
+                <View style={styles.deployRow}>
+                  {canUndo && <ActionBtn label="↶ Undo" flex onPress={() => dispatch({ type: 'UNDO_DEPLOY' })} />}
+                  {player.cards.length > 0 && (
+                    <ActionBtn label={`Cards (${player.cards.length})`} flex onPress={onOpenCards} />
+                  )}
+                </View>
+              )}
+            </>
+          )}
+          <ActionBtn
+            label="Seal Reinforcements →"
+            gold
+            disabled={mustTrade || remaining > 0}
+            onPress={() => dispatch({ type: 'ST_READY_REINFORCE' })}
+          />
+        </View>
+      );
+    }
+
+    if (phase === 'sameTimeBattle') {
+      const myOrders = game.sameTime?.orders.filter((o) => o.player === player.id) ?? [];
+      if (stagedMove) {
+        const fromTer = game.territories[stagedMove.from];
+        const committed = myOrders
+          .filter((o) => o.from === stagedMove.from)
+          .reduce((sum, o) => sum + o.count, 0);
+        const maxCount = Math.max(1, (fromTer?.armies ?? 2) - 1 - committed);
+        const count = Math.min(stagedMove.count, maxCount);
+        const fromName = TERRITORY_MAP[stagedMove.from]?.name ?? stagedMove.from;
+        const toName = TERRITORY_MAP[stagedMove.to]?.name ?? stagedMove.to;
+        return (
+          <View style={styles.actionGroup}>
+            <Text style={styles.stagedLabel} numberOfLines={1}>Attack order: {fromName} → {toName}</Text>
+            <View style={styles.deployRow}>
+              <Stepper value={count} min={1} max={maxCount} onChange={(n) => setStagedMove({ ...stagedMove, count: n })} />
+              <ActionBtn
+                label={`Queue ${count} →`}
+                gold
+                flex
+                onPress={() => {
+                  dispatch({ type: 'ST_QUEUE_ATTACK', from: stagedMove.from, to: stagedMove.to, count, surgeTo: null });
+                  setStagedMove(null);
+                }}
+              />
+            </View>
+            <ActionBtn label="Cancel" onPress={() => setStagedMove(null)} />
+          </View>
+        );
+      }
+      return (
+        <View style={styles.actionGroup}>
+          {selected && selectedOwned && targets.size > 0 && (
+            <Text style={styles.attackHint}>Tap a red territory to stage an attack order</Text>
+          )}
+          {myOrders.length > 0 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.ordersList}>
+              {myOrders.map((o) => (
+                <Pressable
+                  key={o.id}
+                  onPress={() => dispatch({ type: 'ST_CANCEL_ATTACK', orderId: o.id })}
+                  style={styles.orderChip}
+                >
+                  <Text style={styles.orderChipText}>
+                    {o.count} · {TERRITORY_MAP[o.from]?.name ?? o.from} → {TERRITORY_MAP[o.to]?.name ?? o.to} ✕
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          )}
+          <ActionBtn label="Seal Attack Orders →" gold onPress={() => dispatch({ type: 'ST_READY_BATTLE' })} />
+        </View>
+      );
+    }
+
+    if (phase === 'sameTimeMove') {
+      const myMoves = game.sameTime?.moves.filter((m) => m.player === player.id) ?? [];
+      if (stagedMove) {
+        const fromTer = game.territories[stagedMove.from];
+        const committed = myMoves
+          .filter((m) => m.from === stagedMove.from)
+          .reduce((sum, m) => sum + m.count, 0);
+        const maxCount = Math.max(1, (fromTer?.armies ?? 2) - 1 - committed);
+        const count = Math.min(stagedMove.count, maxCount);
+        const fromName = TERRITORY_MAP[stagedMove.from]?.name ?? stagedMove.from;
+        const toName = TERRITORY_MAP[stagedMove.to]?.name ?? stagedMove.to;
+        return (
+          <View style={styles.actionGroup}>
+            <Text style={styles.stagedLabel} numberOfLines={1}>March order: {fromName} → {toName}</Text>
+            <View style={styles.deployRow}>
+              <Stepper value={count} min={1} max={maxCount} onChange={(n) => setStagedMove({ ...stagedMove, count: n })} />
+              <ActionBtn
+                label={`Queue ${count} →`}
+                gold
+                flex
+                onPress={() => {
+                  dispatch({ type: 'ST_QUEUE_MOVE', from: stagedMove.from, to: stagedMove.to, count });
+                  setStagedMove(null);
+                }}
+              />
+            </View>
+            <ActionBtn label="Cancel" onPress={() => setStagedMove(null)} />
+          </View>
+        );
+      }
+      return (
+        <View style={styles.actionGroup}>
+          {selected && selectedOwned && targets.size > 0 && (
+            <Text style={styles.attackHint}>Tap a highlighted territory to stage a march</Text>
+          )}
+          {myMoves.length > 0 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.ordersList}>
+              {myMoves.map((m) => (
+                <Pressable
+                  key={m.id}
+                  onPress={() => dispatch({ type: 'ST_CANCEL_MOVE', orderId: m.id })}
+                  style={styles.orderChip}
+                >
+                  <Text style={styles.orderChipText}>
+                    {m.count} · {TERRITORY_MAP[m.from]?.name ?? m.from} → {TERRITORY_MAP[m.to]?.name ?? m.to} ✕
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          )}
+          <ActionBtn label="Confirm Movement →" gold onPress={() => dispatch({ type: 'ST_READY_MOVE' })} />
+        </View>
+      );
+    }
+
     return null;
   };
 
@@ -203,6 +361,11 @@ export default function GamePanel({
         {phase === 'reinforcement' && game.reinforcementsRemaining > 0 && (
           <View style={styles.badge}>
             <Text style={styles.badgeText}>{game.reinforcementsRemaining}</Text>
+          </View>
+        )}
+        {phase === 'sameTimeReinforce' && (game.sameTime?.reinforcementsRemaining[player.id] ?? 0) > 0 && (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>{game.sameTime?.reinforcementsRemaining[player.id]}</Text>
           </View>
         )}
         <View style={{ flex: 1 }} />
@@ -304,6 +467,9 @@ function phaseLabel(phase: string): string {
     case 'reinforcement': return 'REINFORCE';
     case 'attack': return 'ATTACK';
     case 'fortify': return 'FORTIFY';
+    case 'sameTimeReinforce': return 'REINFORCE (SIM)';
+    case 'sameTimeBattle': return 'ORDERS (SIM)';
+    case 'sameTimeMove': return 'MOVEMENT (SIM)';
     case 'gameOver': return 'END';
     default: return phase.toUpperCase();
   }
@@ -348,6 +514,12 @@ const styles = StyleSheet.create({
   allOutLabel: { color: Colors.text, fontFamily: 'Alegreya_500Medium', fontSize: 13 },
   attackHint: { color: Colors.textMuted, fontFamily: 'Alegreya_400Regular', fontSize: 12 },
   stagedLabel: { color: Colors.text, fontFamily: 'Alegreya_600SemiBold', fontSize: 13 },
+  ordersList: { maxHeight: 32 },
+  orderChip: {
+    borderWidth: 1, borderColor: Colors.border, backgroundColor: 'rgba(53,37,25,0.72)',
+    paddingVertical: 6, paddingHorizontal: 10, marginRight: 6, justifyContent: 'center',
+  },
+  orderChipText: { color: Colors.textMuted, fontFamily: 'Alegreya_500Medium', fontSize: 11 },
   btn: {
     borderWidth: 1, borderColor: Colors.border, backgroundColor: 'rgba(53,37,25,0.72)',
     paddingVertical: 10, paddingHorizontal: 14, alignItems: 'center',

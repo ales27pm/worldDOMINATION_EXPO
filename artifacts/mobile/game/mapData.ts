@@ -14,6 +14,16 @@ export const CONTINENTS: Record<ContinentId, ContinentDef> = {
   australia: { id: "australia", name: "Australia", bonus: 2, color: "#e18cae" },
 };
 
+/** Same Time RISK uses its own, richer continent bonus table (manual, Chapter 9). */
+export const SAME_TIME_CONTINENT_BONUS: Record<ContinentId, number> = {
+  australia: 4,
+  southAmerica: 4,
+  africa: 5,
+  europe: 6,
+  northAmerica: 6,
+  asia: 8,
+};
+
 const t = (
   id: TerritoryId,
   name: string,

@@ -8,8 +8,8 @@ import { useRouter } from 'expo-router';
 import { useGame } from '@/context/GameContext';
 import { Colors } from '@/constants/colors';
 import { GENERAL_LIST } from '@/game/generals';
-import { PLAYER_COLORS } from '@/game/types';
-import type { Allocation, CardRule, GeneralId, Objective } from '@/game/types';
+import { PLAYER_COLORS, TURN_STYLE_INFO } from '@/game/types';
+import type { Allocation, CardRule, GeneralId, Objective, TurnStyle } from '@/game/types';
 
 interface PlayerConfig {
   name: string;
@@ -53,6 +53,8 @@ export default function SetupScreen() {
   const [allocation, setAllocation] = useState<Allocation>('random');
   const [cardRule, setCardRule] = useState<CardRule>('ascending');
   const [extraTerritories, setExtraTerritories] = useState(false);
+  const [turnStyle, setTurnStyle] = useState<TurnStyle>('classic');
+  const [restrictedReinforcement, setRestrictedReinforcement] = useState(false);
 
   const addPlayer = () => {
     if (players.length >= 6) return;
@@ -93,6 +95,8 @@ export default function SetupScreen() {
       useExtraTerritories: extraTerritories,
       cardRule,
       allocation,
+      turnStyle,
+      restrictedReinforcement: turnStyle === 'sameTime' ? restrictedReinforcement : undefined,
     });
     router.replace('/game');
   };
@@ -154,6 +158,32 @@ export default function SetupScreen() {
               value={cardRule}
               onChange={(v) => setCardRule(v as CardRule)}
             />
+          </Section>
+
+          {/* Turn Style */}
+          <Section title="TURN STYLE">
+            <SegmentedPicker
+              options={(Object.keys(TURN_STYLE_INFO) as TurnStyle[]).map((v) => ({ value: v, label: TURN_STYLE_INFO[v].name }))}
+              value={turnStyle}
+              onChange={(v) => setTurnStyle(v as TurnStyle)}
+            />
+            <Text style={styles.switchDesc}>{TURN_STYLE_INFO[turnStyle].description}</Text>
+            {turnStyle === 'sameTime' && (
+              <View style={styles.switchRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.switchLabel}>Restricted Reinforcement</Text>
+                  <Text style={styles.switchDesc}>
+                    Cap each turn's reinforcements so no commander can dump every army in one spot.
+                  </Text>
+                </View>
+                <Switch
+                  value={restrictedReinforcement}
+                  onValueChange={setRestrictedReinforcement}
+                  trackColor={{ true: Colors.gold, false: Colors.border }}
+                  thumbColor={restrictedReinforcement ? Colors.goldDim : Colors.textMuted}
+                />
+              </View>
+            )}
           </Section>
 
           {/* Extra Territories */}

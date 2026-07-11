@@ -101,6 +101,9 @@ export type Objective = "domination60" | "domination80" | "domination100" | "cap
 /** Territory allocation systems (manual, Chapter 7). */
 export type Allocation = "random" | "grab" | "election";
 
+/** Turn structure (manual, Chapter 5 vs Chapter 9): sequential turns, or every commander acting at once. */
+export type TurnStyle = "classic" | "sameTime";
+
 /** Live state of a territory election auction (manual, Chapter 7). */
 export interface ElectionState {
   /** Territory currently up for election. */
@@ -178,6 +181,10 @@ export interface GameSetup {
   allocation?: Allocation;
   /** RISK II Tournament game number (1–16) when playing a tournament battle. */
   tournamentGame?: number;
+  /** Turn structure; older saves may miss it (treated as "classic"). */
+  turnStyle?: TurnStyle;
+  /** Same Time only: caps armies placed per territory per round (manual, Chapter 9). */
+  restrictedReinforcement?: boolean;
 }
 
 export interface PlayerState {
@@ -210,6 +217,9 @@ export type GamePhase =
   | "reinforcement"
   | "attack"
   | "fortify"
+  | "sameTimeReinforce"
+  | "sameTimeBattle"
+  | "sameTimeMove"
   | "gameOver";
 
 export type DiceTier = "white" | "yellow" | "green" | "red" | "black";
@@ -238,6 +248,46 @@ export interface PendingOccupy {
   to: TerritoryId;
   min: number;
   max: number;
+}
+
+/** A queued Same Time attack order — locked in, then resolved simultaneously with every rival's orders. */
+export interface AttackOrder {
+  id: string;
+  player: number;
+  from: TerritoryId;
+  to: TerritoryId;
+  count: number;
+  /** Pre-declared follow-on target (manual's "surge attack") — pressed only if this order wins with survivors to spare. */
+  surgeTo: TerritoryId | null;
+}
+
+/** A queued Same Time tactical transfer between two of a player's own linked territories. */
+export interface TacticalOrder {
+  id: string;
+  player: number;
+  from: TerritoryId;
+  to: TerritoryId;
+  count: number;
+}
+
+/** Live state of a Same Time round — reinforcements, staged orders, and battle playback (manual, Chapter 9). */
+export interface SameTimeState {
+  /** Reinforcements left to place this round, indexed by player id. */
+  reinforcementsRemaining: number[];
+  /** This round's placements per player, so each can undo before readying up. */
+  deployLog: DeployLogEntry[][];
+  /** Players who have confirmed their reinforcement placements this round. */
+  readyReinforce: boolean[];
+  /** Queued attack orders awaiting simultaneous resolution. */
+  orders: AttackOrder[];
+  /** Players who have confirmed their attack orders this round. */
+  readyBattle: boolean[];
+  /** Resolved battle reports awaiting sequential playback, oldest first. */
+  playback: BattleReport[];
+  /** Queued tactical transfers awaiting simultaneous resolution. */
+  moves: TacticalOrder[];
+  /** Players who have confirmed their tactical moves this round. */
+  readyMove: boolean[];
 }
 
 /** One reinforcement placement, kept so the player can undo before attacking. */
@@ -291,6 +341,10 @@ export interface GameState {
   fortifyUsed: boolean;
   /** This turn's reinforcement placements, undoable until the attack begins. */
   deployLog: DeployLogEntry[];
+  /** Same Time round state; null in Classic games. */
+  sameTime: SameTimeState | null;
+  /** Same Time only: players who won a simultaneous draw together (manual, Chapter 9). Null for a solo winner. */
+  coWinners: number[] | null;
 }
 
 export type GameAction =
@@ -311,7 +365,18 @@ export type GameAction =
   | { type: "END_ATTACK" }
   | { type: "FORTIFY"; from: TerritoryId; to: TerritoryId; count: number }
   | { type: "END_TURN" }
-  | { type: "ACKNOWLEDGE_HANDOFF" };
+  | { type: "ACKNOWLEDGE_HANDOFF" }
+  // Same Time RISK — every action below acts on state.currentPlayer, which
+  // rotates between not-yet-ready players within a round rather than a
+  // single turn owner (manual, Chapter 9).
+  | { type: "ST_READY_REINFORCE" }
+  | { type: "ST_QUEUE_ATTACK"; from: TerritoryId; to: TerritoryId; count: number; surgeTo: TerritoryId | null }
+  | { type: "ST_CANCEL_ATTACK"; orderId: string }
+  | { type: "ST_READY_BATTLE" }
+  | { type: "ST_ACK_PLAYBACK" }
+  | { type: "ST_QUEUE_MOVE"; from: TerritoryId; to: TerritoryId; count: number }
+  | { type: "ST_CANCEL_MOVE"; orderId: string }
+  | { type: "ST_READY_MOVE" };
 
 export const PLAYER_COLORS: { hex: string; name: string }[] = [
   { hex: "#e63333", name: "Red" },
@@ -348,6 +413,18 @@ export const ALLOCATION_INFO: Record<Allocation, { name: string; description: st
     name: "Election",
     description:
       "Bid Election Points (~100 per territory) territory by territory. Neighbouring holdings lend one-time influence; unused points trade for battalions at 50 apiece.",
+  },
+};
+
+export const TURN_STYLE_INFO: Record<TurnStyle, { name: string; description: string }> = {
+  classic: {
+    name: "Classic RISK",
+    description: "Commanders act one at a time, in turn order.",
+  },
+  sameTime: {
+    name: "Same Time RISK",
+    description:
+      "Every commander stages reinforcements and attacks in secret, then the round resolves for everyone at once.",
   },
 };
 

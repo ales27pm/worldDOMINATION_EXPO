@@ -8,6 +8,7 @@ import { aiNextAction } from '@/game/ai';
 import { allianceBetween } from '@/game/analysis';
 import { electionBudget } from '@/game/engine';
 import { TERRITORY_MAP } from '@/game/mapData';
+import { friendlyReachableSet } from '@/game/sameTime';
 import { tournamentResult } from '@/game/tournament';
 import { Colors } from '@/constants/colors';
 import type { GameAction, GameState, TerritoryId } from '@/game/types';
@@ -29,6 +30,7 @@ import {
   HandoffOverlay,
   OccupyOverlay,
   ProposalOverlay,
+  SameTimeBattlePlayback,
   VictoryOverlay,
 } from '@/components/game/GameOverlays';
 
@@ -96,12 +98,25 @@ function CampaignScreen({ game }: { game: GameState }) {
 
   const player = game.players[game.currentPlayer];
   const isHumanTurn = player?.isHuman ?? false;
-  const isHumanActive = isHumanTurn && !game.awaitingHandoff && !game.pendingProposal;
+  const sameTimePlaybackPending = game.phase === 'sameTimeBattle' && (game.sameTime?.playback.length ?? 0) > 0;
+  const isHumanActive = isHumanTurn && !game.awaitingHandoff && !game.pendingProposal && !sameTimePlaybackPending;
   const isTournamentGame = game.setup.tournamentGame !== undefined;
+
+  const hasHuman = useMemo(() => game.players.some((p) => p.isHuman && p.alive), [game.players]);
 
   // ── AI Loop ────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!game || game.phase === 'gameOver') return;
+
+    // Same Time battle playback: a human at the table must tap through the
+    // recap themselves (ST_ACK_PLAYBACK, via the panel/overlay). In a
+    // full-AI/spectator match there's no one to tap, so auto-advance it.
+    if (game.phase === 'sameTimeBattle' && (game.sameTime?.playback.length ?? 0) > 0) {
+      if (hasHuman) return;
+      const timer = setTimeout(() => rawDispatch({ type: 'ST_ACK_PLAYBACK' }), 900);
+      return () => clearTimeout(timer);
+    }
+
     if (isHumanTurn || game.awaitingHandoff || game.pendingProposal) return;
     if (game.pendingOccupy) {
       const timer = setTimeout(() => {
@@ -123,7 +138,7 @@ function CampaignScreen({ game }: { game: GameState }) {
       if (action) rawDispatch(action);
     }, delay);
     return () => clearTimeout(timer);
-  }, [game, isHumanTurn, rawDispatch]);
+  }, [game, isHumanTurn, hasHuman, rawDispatch]);
 
   // ── Deselect when phase changes ────────────────────────────────────────────
   useEffect(() => {
@@ -214,6 +229,67 @@ function CampaignScreen({ game }: { game: GameState }) {
           }
         }
       }
+    } else if (phase === 'sameTimeReinforce') {
+      const remaining = game.sameTime?.reinforcementsRemaining[player.id] ?? 0;
+      if (remaining > 0 && player.cards.length < 5) {
+        for (const id of game.activeIds) {
+          if (game.territories[id].owner === player.id) inter.add(id);
+        }
+      }
+    } else if (phase === 'sameTimeBattle') {
+      const orders = game.sameTime?.orders ?? [];
+      if (!selected) {
+        for (const id of game.activeIds) {
+          const ter = game.territories[id];
+          if (ter.owner !== player.id) continue;
+          const committed = orders
+            .filter((o) => o.player === player.id && o.from === id)
+            .reduce((sum, o) => sum + o.count, 0);
+          if (ter.armies - 1 - committed >= 1) inter.add(id);
+        }
+      } else {
+        const selTer = game.territories[selected];
+        const committed = orders
+          .filter((o) => o.player === player.id && o.from === selected)
+          .reduce((sum, o) => sum + o.count, 0);
+        if (selTer?.owner === player.id && selTer.armies - 1 - committed >= 1) {
+          inter.add(selected);
+          const def = TERRITORY_MAP[selected];
+          if (def) {
+            for (const n of def.neighbors) {
+              if (!activeSet.has(n)) continue;
+              const nt = game.territories[n as TerritoryId];
+              if (nt?.owner !== player.id) {
+                const alliance = allianceBetween(game, player.id, nt.owner);
+                if (!alliance || alliance.level < 2) tgts.add(n as TerritoryId);
+              }
+            }
+          }
+        }
+      }
+    } else if (phase === 'sameTimeMove') {
+      const moves = game.sameTime?.moves ?? [];
+      if (!selected) {
+        for (const id of game.activeIds) {
+          const ter = game.territories[id];
+          if (ter.owner !== player.id) continue;
+          const committed = moves
+            .filter((m) => m.player === player.id && m.from === id)
+            .reduce((sum, m) => sum + m.count, 0);
+          if (ter.armies - 1 - committed >= 1) inter.add(id);
+        }
+      } else {
+        const selTer = game.territories[selected];
+        const committed = moves
+          .filter((m) => m.player === player.id && m.from === selected)
+          .reduce((sum, m) => sum + m.count, 0);
+        if (selTer?.owner === player.id && selTer.armies - 1 - committed >= 1) {
+          inter.add(selected);
+          for (const to of friendlyReachableSet(game, player.id, selected)) {
+            tgts.add(to);
+          }
+        }
+      }
     }
     return { interactive: inter, targets: tgts };
   }, [game, selected, isHumanActive]);
@@ -273,6 +349,48 @@ function CampaignScreen({ game }: { game: GameState }) {
       dispatch({ type: 'DEPLOY', territory: id, count: 1 });
       setSelected(id);
       return;
+    }
+    if (phase === 'sameTimeReinforce' && ter.owner === player?.id) {
+      const remaining = game.sameTime?.reinforcementsRemaining[player.id] ?? 0;
+      if (player.cards.length >= 5 || remaining < 1) {
+        setSelected(id === selected ? null : id);
+        return;
+      }
+      dispatch({ type: 'DEPLOY', territory: id, count: 1 });
+      setSelected(id);
+      return;
+    }
+    if (phase === 'sameTimeBattle') {
+      if (selected && targets.has(id)) {
+        const selTer = game.territories[selected];
+        const committed = (game.sameTime?.orders ?? [])
+          .filter((o) => o.player === player?.id && o.from === selected)
+          .reduce((sum, o) => sum + o.count, 0);
+        const maxCount = Math.max(1, (selTer?.armies ?? 2) - 1 - committed);
+        setStagedMove({ from: selected, to: id, count: maxCount });
+        return;
+      }
+      if (ter.owner === player?.id) {
+        setStagedMove(null);
+        setSelected(id === selected ? null : id);
+        return;
+      }
+    }
+    if (phase === 'sameTimeMove') {
+      if (selected && targets.has(id)) {
+        const selTer = game.territories[selected];
+        const committed = (game.sameTime?.moves ?? [])
+          .filter((m) => m.player === player?.id && m.from === selected)
+          .reduce((sum, m) => sum + m.count, 0);
+        const maxCount = Math.max(1, (selTer?.armies ?? 2) - 1 - committed);
+        setStagedMove({ from: selected, to: id, count: maxCount });
+        return;
+      }
+      if (ter.owner === player?.id) {
+        setStagedMove(null);
+        setSelected(id === selected ? null : id);
+        return;
+      }
     }
     if (id !== selected) setSelected(null);
   }, [game, selected, targets, allOut, isHumanActive, dispatch, player]);
@@ -442,6 +560,7 @@ function CampaignScreen({ game }: { game: GameState }) {
       <HandoffOverlay game={game} dispatch={dispatch} />
       <OccupyOverlay game={game} dispatch={dispatch} />
       <ProposalOverlay game={game} dispatch={dispatch} />
+      {hasHuman && <SameTimeBattlePlayback game={game} dispatch={dispatch} />}
       <VictoryOverlay game={game} onExit={handleVictoryExit} />
 
       <CardHand

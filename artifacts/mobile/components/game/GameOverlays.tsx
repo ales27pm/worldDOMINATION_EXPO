@@ -7,6 +7,7 @@ import { TERRITORY_MAP } from '@/game/mapData';
 import { ALLIANCE_LEVEL_INFO } from '@/game/types';
 import type { AllianceLevel, GameAction, GameState } from '@/game/types';
 import { missionText } from '@/game/missions';
+import BattleReportCard from './BattleReport';
 import { Fireworks } from './Fireworks';
 import { StatsScreen } from './StatsScreen';
 
@@ -245,8 +246,17 @@ export function VictoryOverlay({ game, onExit }: { game: GameState; onExit: () =
   const [showStats, setShowStats] = useState(false);
   if (game.phase !== 'gameOver') return null;
   const winner = game.winner !== null ? game.players[game.winner] : null;
+  const coWinners = !winner && game.coWinners ? game.coWinners.map((id) => game.players[id]).filter(Boolean) : [];
+  const isSharedWin = coWinners.length > 0;
   const human = game.players.find((p) => p.isHuman);
-  const playerWon = winner?.id === human?.id;
+  const playerWon = isSharedWin ? coWinners.some((p) => p.id === human?.id) : winner?.id === human?.id;
+  const displayName = isSharedWin ? coWinners.map((p) => p.name).join(' & ') : (winner?.name ?? '?');
+  const displayColor = isSharedWin ? (coWinners[0]?.color ?? Colors.gold) : (winner?.color ?? Colors.gold);
+  const territoryCount = isSharedWin
+    ? game.activeIds.filter((id) => coWinners.some((p) => p.id === game.territories[id].owner)).length
+    : winner
+      ? game.activeIds.filter((id) => game.territories[id].owner === winner.id).length
+      : 0;
 
   return (
     <Modal visible transparent animationType="fade">
@@ -254,21 +264,16 @@ export function VictoryOverlay({ game, onExit }: { game: GameState; onExit: () =
         {playerWon && <Fireworks />}
         <View style={[styles.sheet, styles.victorySheet]}>
           <Text style={[styles.victoryResult, playerWon ? styles.victory : styles.defeat]}>
-            {playerWon ? '⚔ VICTORY' : '✕ DEFEAT'}
+            {isSharedWin ? (playerWon ? '⚔ SHARED VICTORY' : '⚔ SHARED WIN') : playerWon ? '⚔ VICTORY' : '✕ DEFEAT'}
           </Text>
-          <View style={[styles.colorBar, { backgroundColor: winner?.color ?? Colors.gold }]} />
-          <Text style={styles.victoryName}>{winner?.name ?? '?'}</Text>
+          <View style={[styles.colorBar, { backgroundColor: displayColor }]} />
+          <Text style={styles.victoryName}>{displayName}</Text>
           <Text style={styles.victoryReason}>{game.winReason}</Text>
 
           <View style={styles.statsGrid}>
             <StatItem label="Turns" value={String(game.turn)} />
             <StatItem label="Battles" value={String(game.battlesFought)} />
-            <StatItem
-              label="Territories"
-              value={String(
-                winner ? game.activeIds.filter((id) => game.territories[id].owner === winner.id).length : 0,
-              )}
-            />
+            <StatItem label="Territories" value={String(territoryCount)} />
           </View>
 
           <Pressable onPress={() => setShowStats(true)} style={styles.statsBtn}>
@@ -279,6 +284,36 @@ export function VictoryOverlay({ game, onExit }: { game: GameState; onExit: () =
           </Pressable>
         </View>
         <StatsScreen game={game} visible={showStats} onClose={() => setShowStats(false)} />
+      </View>
+    </Modal>
+  );
+}
+
+// ─── Same Time Battle Playback ────────────────────────────────────────────────
+/**
+ * Same Time RISK resolves every commander's orders at once — this modal walks
+ * through the round's battle reports one at a time so the table can watch the
+ * outcome unfold (manual, Chapter 9). Dismissing the last report opens the
+ * tactical move phase.
+ */
+export function SameTimeBattlePlayback({ game, dispatch }: { game: GameState; dispatch: (a: GameAction) => void }) {
+  if (game.phase !== 'sameTimeBattle') return null;
+  const report = game.sameTime?.playback[0];
+  if (!report) return null;
+  const remaining = (game.sameTime?.playback.length ?? 1) - 1;
+  return (
+    <Modal visible transparent animationType="fade">
+      <View style={styles.backdrop}>
+        <View style={[styles.sheet, styles.playbackSheet]}>
+          <Text style={styles.handoffTitle}>ROUND {game.turn} — BATTLE REPORT</Text>
+          <BattleReportCard battle={report} game={game} />
+          {remaining > 0 && (
+            <Text style={styles.playbackCount}>{remaining} more report{remaining === 1 ? '' : 's'} to review</Text>
+          )}
+          <Pressable onPress={() => dispatch({ type: 'ST_ACK_PLAYBACK' })} style={styles.primaryBtn}>
+            <Text style={styles.primaryBtnText}>{remaining > 0 ? 'CONTINUE →' : 'PROCEED TO MOVEMENT →'}</Text>
+          </Pressable>
+        </View>
       </View>
     </Modal>
   );
@@ -344,6 +379,10 @@ const styles = StyleSheet.create({
   missionBox: { backgroundColor: Colors.bgCard, borderWidth: 1, borderColor: Colors.border, padding: 12, gap: 4 },
   missionLabel: { color: Colors.goldDim, fontFamily: 'Alegreya_600SemiBold', fontSize: 10, letterSpacing: 2 },
   missionText: { color: Colors.text, fontFamily: 'Alegreya_400Regular', fontSize: 13 },
+
+  // Same Time battle playback
+  playbackSheet: { gap: 14, alignItems: 'stretch' },
+  playbackCount: { color: Colors.textMuted, fontFamily: 'Alegreya_400Regular', fontSize: 12, textAlign: 'center' },
 
   // Occupy
   occupyTitle: { color: Colors.gold, fontFamily: 'Alegreya_700Bold', fontSize: 16, letterSpacing: 2 },

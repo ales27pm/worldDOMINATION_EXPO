@@ -84,12 +84,14 @@ export function tournamentResult(state: GameState): TournamentResult {
   }
   const kills = state.players.filter((p) => p.killedBy === human.id).length;
   const won = state.winner === human.id;
+  // Same Time RISK can end in a shared draw-win — worth less than an outright win (manual, Chapter 9).
+  const sharedWin = !won && (state.coWinners?.includes(human.id) ?? false);
   const humanTroops = totalTroops(state, human.id);
   const rivalBest = Math.max(
     0,
     ...state.players.filter((p) => p.alive && p.id !== human.id).map((p) => totalTroops(state, p.id)),
   );
   const mostTroops = humanTroops >= rivalBest;
-  const points = (won ? 150 : 0) + kills * 20 + (mostTroops ? 30 : 0);
-  return { eliminated: false, won, kills, mostTroops, points, progressed: won || kills >= 1 };
+  const points = (won ? 150 : sharedWin ? 100 : 0) + kills * 20 + (mostTroops ? 30 : 0);
+  return { eliminated: false, won: won || sharedWin, kills, mostTroops, points, progressed: won || sharedWin || kills >= 1 };
 }

@@ -3,4 +3,5 @@
 - [Mobile game asset delivery](mobile-art-delivery.md) — bundle game-critical images AND audio (remote loads = silent first battle, permanent holes); bundled images need explicit sizes, not inset-only absoluteFill.
 - [Web autoplay & expo-audio](expo-web-autoplay.md) — browsers reject pre-gesture play(); expo-audio surfaces it as an uncaught NotAllowedError overlay — gate all playback behind first pointer/key input.
 - [Mobile board e2e testing](mobile-e2e-testing.md) — tester taps need fresh screenshots (camera glides ~1.5s after every tap); catch battle scenes via waitFor "assaults", not blind screenshots.
-- [Risk II manual rule coverage](risk2-manual-coverage.md) — Classic/Capital/Mission RISK, all allocation & card-trading variants already match the official manual exactly; only "Same Time RISK" (simultaneous mode) is unbuilt.
+- [Risk II manual rule coverage](risk2-manual-coverage.md) — Classic/Capital/Mission RISK, all allocation & card-trading variants match the manual exactly; Same Time RISK is now built too (see next entry).
+- [Same Time RISK mode architecture](same-time-risk-mode.md) — simultaneous-turn variant: rotating currentPlayer as focus pointer, collapsed battle resolver, playback gated on human presence to avoid AI-only stalls.

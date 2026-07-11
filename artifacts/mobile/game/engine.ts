@@ -5,8 +5,11 @@ import { GENERALS } from "./generals";
 import { activeTerritories, continentTerritories, CONTINENTS, TERRITORY_MAP } from "./mapData";
 import { generateMissions } from "./missions";
 import { missionAchieved } from "./missions";
+import { friendlyReachableSet, restrictedReinforcementCap, resolveSameTimeRound, sameTimeReinforcementsFor } from "./sameTime";
 import type {
   AllianceLevel,
+  AttackOrder,
+  BattleReport,
   ContinentId,
   ElectionState,
   GameAction,
@@ -14,6 +17,7 @@ import type {
   GameState,
   LogTone,
   PlayerState,
+  TacticalOrder,
   TerritoryId,
   TerritoryState,
 } from "./types";
@@ -127,12 +131,43 @@ function drawCard(state: GameState, player: PlayerState): void {
   }
 }
 
+/** Whether a player's own objective (not elimination) is satisfied right now, and why. */
+function objectiveReason(state: GameState, playerId: number): string | null {
+  const player = state.players[playerId];
+  if (!player) return null;
+  const total = state.activeIds.length;
+  const owned = ownedIds(state, playerId).length;
+  const objective = state.setup.objective;
+  if (objective === "domination60" || objective === "domination80") {
+    const target = DOMINATION_TARGETS[objective][total] ?? Math.round(total * (objective === "domination60" ? 0.6 : 0.8));
+    if (owned >= target) {
+      return `${objective === "domination60" ? "60%" : "80%"} Domination — ${owned} of ${total} territories held`;
+    }
+  }
+  if (objective === "domination100" && owned === total) {
+    return "World Domination";
+  }
+  if (objective === "capital") {
+    const own = player.capital;
+    const opposing = state.players.filter((p) => p.id !== playerId && p.capital !== null);
+    const required = Math.min(opposing.length, requiredCapitalCaptures(state.players.length));
+    const captured = opposing.filter(
+      (p) => p.capital !== null && state.territories[p.capital].owner === playerId,
+    ).length;
+    if (own !== null && required > 0 && state.territories[own].owner === playerId && captured >= required) {
+      return `Capital RISK — ${captured} enemy capitals seized while holding their own`;
+    }
+  }
+  if (objective === "mission" && player.mission && missionAchieved(player.mission, state, playerId)) {
+    return "their secret mission";
+  }
+  return null;
+}
+
 function checkVictory(state: GameState, playerId: number): void {
   if (state.phase === "gameOver") return;
   const player = state.players[playerId];
   if (!player) return;
-  const total = state.activeIds.length;
-  const owned = ownedIds(state, playerId).length;
   const aliveOthers = state.players.filter((p) => p.alive && p.id !== playerId);
 
   const declare = (reason: string): void => {
@@ -147,33 +182,52 @@ function checkVictory(state: GameState, playerId: number): void {
     declare("total conquest — every rival destroyed");
     return;
   }
-  const objective = state.setup.objective;
-  if (objective === "domination60" || objective === "domination80") {
-    const target = DOMINATION_TARGETS[objective][total] ?? Math.round(total * (objective === "domination60" ? 0.6 : 0.8));
-    if (owned >= target) {
-      declare(`${objective === "domination60" ? "60%" : "80%"} Domination — ${owned} of ${total} territories held`);
-      return;
-    }
-  }
-  if (objective === "domination100" && owned === total) {
-    declare("World Domination");
+  const reason = objectiveReason(state, playerId);
+  if (reason) declare(reason);
+}
+
+/**
+ * Same Time victory check: every alive commander's objective is evaluated
+ * together after a round resolves, since several could cross the line in
+ * the same round. A single achiever wins outright; several achievers share
+ * a draw-win (manual, Chapter 9).
+ */
+function resolveSameTimeVictory(state: GameState): void {
+  if (state.phase === "gameOver") return;
+  const alive = state.players.filter((p) => p.alive);
+  if (alive.length <= 1 && state.players.length > 1) {
+    const winner = alive[0];
+    if (!winner) return;
+    state.phase = "gameOver";
+    state.winner = winner.id;
+    state.coWinners = null;
+    state.winReason = "total conquest — every rival destroyed";
+    state.awaitingHandoff = false;
+    addLog(state, `${winner.name} achieves total conquest — every rival destroyed. The campaign is won.`, "gold");
     return;
   }
-  if (objective === "capital") {
-    const own = player.capital;
-    const opposing = state.players.filter((p) => p.id !== playerId && p.capital !== null);
-    const required = Math.min(opposing.length, requiredCapitalCaptures(state.players.length));
-    const captured = opposing.filter(
-      (p) => p.capital !== null && state.territories[p.capital].owner === playerId,
-    ).length;
-    if (own !== null && required > 0 && state.territories[own].owner === playerId && captured >= required) {
-      declare(`Capital RISK — ${captured} enemy capitals seized while holding their own`);
-      return;
-    }
+  const achievers = alive
+    .map((p) => ({ player: p, reason: objectiveReason(state, p.id) }))
+    .filter((x): x is { player: PlayerState; reason: string } => x.reason !== null);
+  if (achievers.length === 0) return;
+  state.phase = "gameOver";
+  state.awaitingHandoff = false;
+  if (achievers.length === 1) {
+    const { player, reason } = achievers[0];
+    state.winner = player.id;
+    state.coWinners = null;
+    state.winReason = reason;
+    addLog(state, `${player.name} achieves ${reason}. The campaign is won.`, "gold");
+    return;
   }
-  if (objective === "mission" && player.mission && missionAchieved(player.mission, state, playerId)) {
-    declare("their secret mission");
-  }
+  state.winner = null;
+  state.coWinners = achievers.map((a) => a.player.id);
+  state.winReason = `a simultaneous ${achievers[0]?.reason ?? "victory"}`;
+  addLog(
+    state,
+    `${achievers.map((a) => a.player.name).join(" and ")} cross the finish line together — a shared victory!`,
+    "gold",
+  );
 }
 
 function cloneState(state: GameState): GameState {
@@ -197,6 +251,20 @@ function cloneState(state: GameState): GameState {
           influenceUsed: [...state.election.influenceUsed],
         }
       : null,
+    sameTime: state.sameTime
+      ? {
+          ...state.sameTime,
+          reinforcementsRemaining: [...state.sameTime.reinforcementsRemaining],
+          deployLog: state.sameTime.deployLog.map((entries) => [...entries]),
+          readyReinforce: [...state.sameTime.readyReinforce],
+          orders: [...state.sameTime.orders],
+          readyBattle: [...state.sameTime.readyBattle],
+          playback: [...state.sameTime.playback],
+          moves: [...state.sameTime.moves],
+          readyMove: [...state.sameTime.readyMove],
+        }
+      : null,
+    coWinners: state.coWinners ? [...state.coWinners] : null,
   };
 }
 
@@ -212,6 +280,8 @@ export function normalizeState(raw: GameState): GameState {
     election: raw.election ?? null,
     fortifyUsed: raw.fortifyUsed ?? false,
     deployLog: raw.deployLog ?? [],
+    sameTime: raw.sameTime ?? null,
+    coWinners: raw.coWinners ?? null,
     players: raw.players.map((p) => ({ ...p, grudges: p.grudges ?? {} })),
   };
 }
@@ -307,8 +377,13 @@ export function createGame(setup: GameSetup): GameState {
     election: null,
     fortifyUsed: false,
     deployLog: [],
+    sameTime: null,
+    coWinners: null,
   };
   addLog(state, `The campaign of MDCCCXII begins — ${OBJECTIVE_INFO[setup.objective].name}.`, "gold");
+  if (setup.turnStyle === "sameTime") {
+    addLog(state, "Same Time RISK — every commander plans and moves at once.", "info");
+  }
   if (allocation === "grab") {
     state.phase = "territoryGrab";
     addLog(state, "Territory Grab — commanders take turns claiming their ground.", "gold");
@@ -509,6 +584,8 @@ function beginCampaign(state: GameState): void {
     state.phase = "chooseCapital";
     state.currentPlayer = firstChooser;
     addLog(state, "Commanders, choose your capital cities.", "gold");
+  } else if (state.setup.turnStyle === "sameTime") {
+    startSameTimeRound(state);
   } else {
     state.currentPlayer = 0;
     startTurn(state);
@@ -560,7 +637,8 @@ function endTurn(state: GameState): void {
 
 function performTrade(state: GameState, cardIds: string[]): void {
   const player = state.players[state.currentPlayer];
-  if (!player || state.phase !== "reinforcement") return;
+  const sameTimeReinforce = state.phase === "sameTimeReinforce" && state.sameTime;
+  if (!player || (state.phase !== "reinforcement" && !sameTimeReinforce)) return;
   const cards = cardIds
     .map((id) => player.cards.find((c) => c.id === id))
     .filter((c): c is NonNullable<typeof c> => c !== undefined);
@@ -569,13 +647,19 @@ function performTrade(state: GameState, cardIds: string[]): void {
   if (bonus <= 0) return;
   player.cards = player.cards.filter((c) => !cardIds.includes(c.id));
   state.tradesCompleted += 1;
-  state.reinforcementsRemaining += bonus;
   const ownedCard = cards.find((c) => c.territory !== null && state.territories[c.territory].owner === player.id);
   if (ownedCard?.territory) {
     const territory = state.territories[ownedCard.territory];
     setTerritory(state, ownedCard.territory, { ...territory, armies: territory.armies + 2 });
   }
-  state.mustTrade = player.cards.length >= 5;
+  if (sameTimeReinforce && state.sameTime) {
+    state.sameTime.reinforcementsRemaining = state.sameTime.reinforcementsRemaining.map((n, i) =>
+      i === player.id ? n + bonus : n,
+    );
+  } else {
+    state.reinforcementsRemaining += bonus;
+    state.mustTrade = player.cards.length >= 5;
+  }
   addLog(state, `${player.name} trades a card set for ${bonus} armies.`, "gold");
 }
 
@@ -611,6 +695,237 @@ function advanceInitialDeploy(state: GameState): void {
   }
   addLog(state, "All starting armies are in the field. To war!", "gold");
   beginCampaign(state);
+}
+
+/** Next alive player (searching forward from the current focus) who hasn't confirmed this sub-phase yet. */
+function nextNotReady(state: GameState, ready: boolean[]): number | null {
+  const total = state.players.length;
+  for (let step = 0; step < total; step += 1) {
+    const candidate = (state.currentPlayer + step) % total;
+    const p = state.players[candidate];
+    if (p?.alive && !ready[candidate]) return candidate;
+  }
+  return null;
+}
+
+/** Pass-and-play only needs a handoff screen between two different human commanders. */
+function focusSameTimeActor(state: GameState): void {
+  const actor = state.players[state.currentPlayer];
+  state.awaitingHandoff = Boolean(actor?.isHuman) && humansCount(state.players) > 1;
+}
+
+/** Open a fresh Same Time round: everyone musters reinforcements in secret. */
+function startSameTimeRound(state: GameState): void {
+  state.phase = "sameTimeReinforce";
+  state.pendingOccupy = null;
+  state.lastBattle = null;
+  state.sameTime = {
+    reinforcementsRemaining: state.players.map((p) => (p.alive ? sameTimeReinforcementsFor(state, p.id) : 0)),
+    deployLog: state.players.map(() => []),
+    readyReinforce: state.players.map(() => false),
+    orders: [],
+    readyBattle: state.players.map(() => false),
+    playback: [],
+    moves: [],
+    readyMove: state.players.map(() => false),
+  };
+  const firstAlive = state.players.findIndex((p) => p.alive);
+  state.currentPlayer = firstAlive >= 0 ? firstAlive : 0;
+  addLog(state, `Round ${state.turn} — commanders muster reinforcements in secret.`, "gold");
+  focusSameTimeReinforce(state);
+}
+
+function focusSameTimeReinforce(state: GameState): void {
+  const st = state.sameTime;
+  if (!st) return;
+  const next = nextNotReady(state, st.readyReinforce);
+  if (next === null) {
+    beginSameTimeBattle(state);
+    return;
+  }
+  state.currentPlayer = next;
+  focusSameTimeActor(state);
+}
+
+function beginSameTimeBattle(state: GameState): void {
+  const st = state.sameTime;
+  if (!st) return;
+  state.phase = "sameTimeBattle";
+  st.orders = [];
+  st.readyBattle = state.players.map(() => false);
+  st.playback = [];
+  const firstAlive = state.players.findIndex((p) => p.alive);
+  state.currentPlayer = firstAlive >= 0 ? firstAlive : 0;
+  addLog(state, "Reinforcements are in place — commanders stage their attack orders.", "gold");
+  focusSameTimeBattle(state);
+}
+
+function focusSameTimeBattle(state: GameState): void {
+  const st = state.sameTime;
+  if (!st) return;
+  const next = nextNotReady(state, st.readyBattle);
+  if (next === null) {
+    resolveSameTimeBattlePhase(state);
+    return;
+  }
+  state.currentPlayer = next;
+  focusSameTimeActor(state);
+}
+
+/** Log every resolved battle and settle any eliminations from the round's combined casualties. */
+function applySameTimeCasualties(state: GameState, reports: BattleReport[]): void {
+  for (const report of reports) {
+    const attackerName = state.players[report.attacker]?.name ?? "?";
+    if (report.conquered) {
+      addLog(
+        state,
+        `${attackerName} storms ${report.to} from ${report.from} (${report.defenderLosses} defenders slain).`,
+        "battle",
+      );
+    } else if (report.rounds > 0) {
+      addLog(
+        state,
+        `Clash at ${report.to}: ${attackerName} loses ${report.attackerLosses}, defender loses ${report.defenderLosses}.`,
+        "battle",
+      );
+    }
+  }
+  // Same Time can eliminate several commanders in one round (A takes B's
+  // last territory while C simultaneously takes A's) — so who's eliminated
+  // is computed once, order-independently, from the round's final board
+  // rather than one player at a time as we mutate `alive` in place.
+  const eliminatedIds = new Set<number>();
+  for (const victim of state.players) {
+    if (!victim.alive) continue;
+    const stillOwns = state.activeIds.some((id) => state.territories[id].owner === victim.id);
+    if (!stillOwns) eliminatedIds.add(victim.id);
+  }
+
+  // The player whose attack directly ended each victim (used for kill
+  // credit / tournament scoring, regardless of whether that killer also
+  // dies this same round).
+  const directKiller = new Map<number, number>();
+  for (const victimId of eliminatedIds) {
+    const killerReport = [...reports].reverse().find((r) => r.conquered && r.defender === victimId);
+    if (killerReport) directKiller.set(victimId, killerReport.attacker);
+  }
+
+  // Cards must land on a commander who is still standing after the round.
+  // If the direct killer was themselves eliminated this same round, follow
+  // their killer onward until reaching a survivor (or give up on a cycle /
+  // dead end — the spoils are simply lost, not orphaned on a dead player).
+  const finalRecipient = (victimId: number): number | null => {
+    const visited = new Set<number>([victimId]);
+    let cur = directKiller.get(victimId) ?? null;
+    while (cur !== null && eliminatedIds.has(cur)) {
+      if (visited.has(cur)) return null;
+      visited.add(cur);
+      cur = directKiller.get(cur) ?? null;
+    }
+    return cur;
+  };
+
+  for (const victimId of eliminatedIds) {
+    const victim = state.players[victimId];
+    victim.alive = false;
+    const killerId = directKiller.get(victimId) ?? null;
+    victim.killedBy = killerId;
+    const recipientId = finalRecipient(victimId);
+    const recipient = recipientId !== null ? state.players[recipientId] : null;
+    if (recipient && victim.cards.length > 0) {
+      recipient.cards = [...recipient.cards, ...victim.cards];
+    }
+    victim.cards = [];
+    const killerName = killerId !== null ? state.players[killerId]?.name : null;
+    addLog(
+      state,
+      `${victim.name} has been destroyed${killerName ? ` by ${killerName}` : ""}.`,
+      "crimson",
+    );
+  }
+}
+
+/** Every attack order across every commander resolves at once (manual, Chapter 9). */
+function resolveSameTimeBattlePhase(state: GameState): void {
+  const st = state.sameTime;
+  if (!st) return;
+  const result = resolveSameTimeRound(state.territories, st.orders);
+  state.territories = result.territories;
+  state.battlesFought += result.reports.length;
+  for (const playerId of result.conquerors) {
+    const p = state.players[playerId];
+    if (p) p.conqueredThisTurn = true;
+  }
+  applySameTimeCasualties(state, result.reports);
+  st.orders = [];
+  st.playback = result.reports;
+  if (st.playback.length === 0) {
+    beginSameTimeMove(state);
+  }
+}
+
+function beginSameTimeMove(state: GameState): void {
+  const st = state.sameTime;
+  if (!st) return;
+  state.phase = "sameTimeMove";
+  st.moves = [];
+  st.readyMove = state.players.map(() => false);
+  const firstAlive = state.players.findIndex((p) => p.alive);
+  state.currentPlayer = firstAlive >= 0 ? firstAlive : 0;
+  addLog(state, "The field falls quiet — commanders reposition their armies.", "gold");
+  focusSameTimeMove(state);
+}
+
+function focusSameTimeMove(state: GameState): void {
+  const st = state.sameTime;
+  if (!st) return;
+  const next = nextNotReady(state, st.readyMove);
+  if (next === null) {
+    finishSameTimeRound(state);
+    return;
+  }
+  state.currentPlayer = next;
+  focusSameTimeActor(state);
+}
+
+/** Apply queued tactical moves, hand out conquest cards, check for a win, and open the next round. */
+function finishSameTimeRound(state: GameState): void {
+  const st = state.sameTime;
+  if (!st) return;
+  for (const move of st.moves) {
+    const from = state.territories[move.from];
+    const to = state.territories[move.to];
+    if (!from || !to || from.owner !== move.player || to.owner !== move.player) continue;
+    const count = Math.min(move.count, from.armies - 1);
+    if (count <= 0) continue;
+    setTerritory(state, move.from, { ...from, armies: from.armies - count });
+    setTerritory(state, move.to, { ...state.territories[move.to], armies: state.territories[move.to].armies + count });
+  }
+  for (const p of state.players) {
+    if (p.alive && p.conqueredThisTurn) {
+      drawCard(state, p);
+      addLog(state, `${p.name} earns a Risk card for the round's conquests.`, "info");
+      p.conqueredThisTurn = false;
+    }
+  }
+  resolveSameTimeVictory(state);
+  if (state.phase === "gameOver") return;
+  recordSnapshot(state);
+  state.turn += 1;
+  const lapsed = state.alliances.filter(
+    (a) => a.expiresOnRound < state.turn || !state.players[a.a]?.alive || !state.players[a.b]?.alive,
+  );
+  if (lapsed.length > 0) {
+    state.alliances = state.alliances.filter((a) => !lapsed.includes(a));
+    for (const a of lapsed) {
+      addLog(
+        state,
+        `The pact between ${state.players[a.a]?.name ?? "?"} and ${state.players[a.b]?.name ?? "?"} has lapsed.`,
+        "info",
+      );
+    }
+  }
+  startSameTimeRound(state);
 }
 
 export function gameReducer(previous: GameState, action: GameAction): GameState {
@@ -735,9 +1050,13 @@ export function gameReducer(previous: GameState, action: GameAction): GameState 
         state.currentPlayer = nextChooser;
         state.awaitingHandoff = humansCount(state.players) > 1;
       } else {
-        state.currentPlayer = 0;
         addLog(state, "All capitals are disclosed. Defend your own — and march on theirs.", "gold");
-        startTurn(state);
+        if (state.setup.turnStyle === "sameTime") {
+          startSameTimeRound(state);
+        } else {
+          state.currentPlayer = 0;
+          startTurn(state);
+        }
       }
       return state;
     }
@@ -754,6 +1073,29 @@ export function gameReducer(previous: GameState, action: GameAction): GameState 
     }
 
     case "DEPLOY": {
+      if (state.phase === "sameTimeReinforce") {
+        const st = state.sameTime;
+        if (!st || state.awaitingHandoff || player.cards.length >= 5) return previous;
+        const territory = state.territories[action.territory];
+        if (territory.owner !== player.id) return previous;
+        const remaining = st.reinforcementsRemaining[player.id] ?? 0;
+        let count = Math.min(Math.max(1, action.count), remaining);
+        if (state.setup.restrictedReinforcement) {
+          const cap = restrictedReinforcementCap(state, player.id, action.territory);
+          const alreadyPlaced = st.deployLog[player.id]?.reduce(
+            (sum, entry) => (entry.territory === action.territory ? sum + entry.count : sum),
+            0,
+          ) ?? 0;
+          count = Math.min(count, Math.max(0, cap - alreadyPlaced));
+        }
+        if (count <= 0) return previous;
+        setTerritory(state, action.territory, { ...territory, armies: territory.armies + count });
+        st.reinforcementsRemaining = st.reinforcementsRemaining.map((n, i) => (i === player.id ? n - count : n));
+        st.deployLog = st.deployLog.map((entries, i) =>
+          i === player.id ? [...entries, { territory: action.territory, count }] : entries,
+        );
+        return state;
+      }
       if (state.phase !== "reinforcement" || state.mustTrade || state.awaitingHandoff) return previous;
       const territory = state.territories[action.territory];
       if (territory.owner !== player.id) return previous;
@@ -770,6 +1112,21 @@ export function gameReducer(previous: GameState, action: GameAction): GameState 
     }
 
     case "UNDO_DEPLOY": {
+      if (state.phase === "sameTimeReinforce") {
+        const st = state.sameTime;
+        if (!st || state.awaitingHandoff) return previous;
+        const log = st.deployLog[player.id] ?? [];
+        const last = log[log.length - 1];
+        if (!last) return previous;
+        const territory = state.territories[last.territory];
+        if (territory.owner !== player.id || territory.armies - last.count < 1) return previous;
+        setTerritory(state, last.territory, { ...territory, armies: territory.armies - last.count });
+        st.reinforcementsRemaining = st.reinforcementsRemaining.map((n, i) =>
+          i === player.id ? n + last.count : n,
+        );
+        st.deployLog = st.deployLog.map((entries, i) => (i === player.id ? entries.slice(0, -1) : entries));
+        return state;
+      }
       if (state.phase !== "reinforcement" || state.awaitingHandoff) return previous;
       const last = state.deployLog[state.deployLog.length - 1];
       if (!last) return previous;
@@ -923,6 +1280,139 @@ export function gameReducer(previous: GameState, action: GameAction): GameState 
       if (state.awaitingHandoff || state.pendingOccupy) return previous;
       if (state.phase !== "attack" && state.phase !== "fortify") return previous;
       endTurn(state);
+      return state;
+    }
+
+    case "ST_READY_REINFORCE": {
+      const st = state.sameTime;
+      if (state.phase !== "sameTimeReinforce" || !st || state.awaitingHandoff) return previous;
+      if (player.cards.length >= 5) return previous;
+      if ((st.reinforcementsRemaining[player.id] ?? 0) !== 0) return previous;
+      st.readyReinforce = st.readyReinforce.map((r, i) => (i === player.id ? true : r));
+      addLog(state, `${player.name} seals their orders.`, "info");
+      focusSameTimeReinforce(state);
+      return state;
+    }
+
+    case "ST_QUEUE_ATTACK": {
+      const st = state.sameTime;
+      if (state.phase !== "sameTimeBattle" || !st || state.awaitingHandoff) return previous;
+      if (st.readyBattle[player.id]) return previous;
+      const from = state.territories[action.from];
+      const to = state.territories[action.to];
+      if (!from || !to || from.owner !== player.id || to.owner === player.id) return previous;
+      if (!(TERRITORY_MAP[action.from]?.neighbors ?? []).includes(action.to)) return previous;
+      const alreadyCommitted = st.orders
+        .filter((o) => o.player === player.id && o.from === action.from)
+        .reduce((sum, o) => sum + o.count, 0);
+      const available = from.armies - 1 - alreadyCommitted;
+      const count = Math.min(Math.max(1, action.count), available);
+      if (count <= 0) return previous;
+      if (action.surgeTo && !(TERRITORY_MAP[action.to]?.neighbors ?? []).includes(action.surgeTo)) return previous;
+
+      const defenderPlayer = state.players[to.owner];
+      if (defenderPlayer) {
+        const alliance = allianceBetween(state, player.id, defenderPlayer.id);
+        if (alliance && (alliance.level >= 2 || protectedByLevelOne(state, defenderPlayer.id, action.to))) {
+          state.alliances = state.alliances.filter(
+            (x) => !((x.a === alliance.a && x.b === alliance.b) || (x.a === alliance.b && x.b === alliance.a)),
+          );
+          bumpGrudge(state, defenderPlayer.id, player.id, 1.5);
+          addLog(state, `${player.name} BREAKS the pact with ${defenderPlayer.name}. Treachery!`, "crimson");
+        }
+        bumpGrudge(state, defenderPlayer.id, player.id, 0.15);
+      }
+
+      state.sameTime = {
+        ...st,
+        orders: [
+          ...st.orders,
+          {
+            id: `${state.turn}-${player.id}-${action.from}-${action.to}-${st.orders.length}`,
+            player: player.id,
+            from: action.from,
+            to: action.to,
+            count,
+            surgeTo: action.surgeTo,
+          },
+        ],
+      };
+      addLog(state, `${player.name} orders ${count} armies from ${action.from} against ${action.to}.`, "info");
+      return state;
+    }
+
+    case "ST_CANCEL_ATTACK": {
+      const st = state.sameTime;
+      if (state.phase !== "sameTimeBattle" || !st || state.awaitingHandoff) return previous;
+      if (st.readyBattle[player.id]) return previous;
+      const order = st.orders.find((o) => o.id === action.orderId);
+      if (!order || order.player !== player.id) return previous;
+      st.orders = st.orders.filter((o) => o.id !== action.orderId);
+      return state;
+    }
+
+    case "ST_READY_BATTLE": {
+      const st = state.sameTime;
+      if (state.phase !== "sameTimeBattle" || !st || state.awaitingHandoff) return previous;
+      st.readyBattle = st.readyBattle.map((r, i) => (i === player.id ? true : r));
+      addLog(state, `${player.name} seals their attack orders.`, "info");
+      focusSameTimeBattle(state);
+      return state;
+    }
+
+    case "ST_ACK_PLAYBACK": {
+      const st = state.sameTime;
+      if (state.phase !== "sameTimeBattle" || !st || st.playback.length === 0) return previous;
+      st.playback = st.playback.slice(1);
+      if (st.playback.length === 0) {
+        beginSameTimeMove(state);
+      }
+      return state;
+    }
+
+    case "ST_QUEUE_MOVE": {
+      const st = state.sameTime;
+      if (state.phase !== "sameTimeMove" || !st || state.awaitingHandoff) return previous;
+      if (st.readyMove[player.id]) return previous;
+      const from = state.territories[action.from];
+      if (!from || from.owner !== player.id) return previous;
+      if (!friendlyReachableSet(state, player.id, action.from).has(action.to)) return previous;
+      const alreadyCommitted = st.moves
+        .filter((m) => m.player === player.id && m.from === action.from)
+        .reduce((sum, m) => sum + m.count, 0);
+      const available = from.armies - 1 - alreadyCommitted;
+      const count = Math.min(Math.max(1, action.count), available);
+      if (count <= 0) return previous;
+      st.moves = [
+        ...st.moves,
+        {
+          id: `${state.turn}-${player.id}-${action.from}-${action.to}-${st.moves.length}`,
+          player: player.id,
+          from: action.from,
+          to: action.to,
+          count,
+        },
+      ];
+      addLog(state, `${player.name} orders ${count} armies to march from ${action.from} to ${action.to}.`, "info");
+      return state;
+    }
+
+    case "ST_CANCEL_MOVE": {
+      const st = state.sameTime;
+      if (state.phase !== "sameTimeMove" || !st || state.awaitingHandoff) return previous;
+      if (st.readyMove[player.id]) return previous;
+      const move = st.moves.find((m) => m.id === action.orderId);
+      if (!move || move.player !== player.id) return previous;
+      st.moves = st.moves.filter((m) => m.id !== action.orderId);
+      return state;
+    }
+
+    case "ST_READY_MOVE": {
+      const st = state.sameTime;
+      if (state.phase !== "sameTimeMove" || !st || state.awaitingHandoff) return previous;
+      st.readyMove = st.readyMove.map((r, i) => (i === player.id ? true : r));
+      addLog(state, `${player.name} confirms their repositioning.`, "info");
+      focusSameTimeMove(state);
       return state;
     }
   }
