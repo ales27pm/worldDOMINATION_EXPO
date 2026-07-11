@@ -1,13 +1,18 @@
 import { useSyncExternalStore } from "react";
 
-import { Audio } from "expo-av";
+import {
+  createAudioPlayer,
+  setAudioModeAsync,
+  type AudioPlayer,
+  type AudioStatus,
+} from "expo-audio";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { assetUrl } from "./assetUrl";
 
 /**
  * RISK II sound board — the original game samples, served from object storage
- * at public/risk/sfx. A tiny expo-av based engine mirroring the web build:
+ * at public/risk/sfx. A tiny expo-audio based engine mirroring the web build:
  * fire-and-forget one-shots with per-call volume, throttling, fade-out stops,
  * and a persisted global mute.
  */
@@ -40,19 +45,23 @@ let muted = false;
 
 const listeners = new Set<() => void>();
 
-/** Idle, loaded instances kept warm for instant replay (one per sample). */
-const preloaded = new Map<SfxName, Audio.Sound>();
+/** Idle, loaded players kept warm for instant replay (one per sample). */
+const preloaded = new Map<SfxName, AudioPlayer>();
 
-type Live = { sound: Audio.Sound; pooled: boolean };
+type Live = {
+  player: AudioPlayer;
+  pooled: boolean;
+  subscription: { remove(): void } | null;
+};
 
 /** Sounds currently playing — global mute applies to these immediately. */
 const active = new Set<Live>();
 const lastPlayed = new Map<SfxName, number>();
 
 // Game audio should play even when the iOS ring switch is silenced.
-Audio.setAudioModeAsync({
-  playsInSilentModeIOS: true,
-  staysActiveInBackground: false,
+setAudioModeAsync({
+  playsInSilentMode: true,
+  shouldPlayInBackground: false,
 }).catch(() => {});
 
 // Hydrate the persisted mute preference (async — applies within milliseconds
@@ -62,7 +71,9 @@ AsyncStorage.getItem(MUTE_KEY)
     if (value === "off" && !muted) {
       muted = true;
       active.forEach((l) => {
-        l.sound.setIsMutedAsync(true).catch(() => {});
+        try {
+          l.player.muted = true;
+        } catch {}
       });
       listeners.forEach((fn) => fn());
     }
@@ -73,9 +84,9 @@ function uriFor(name: SfxName): string {
   return assetUrl(`public/risk/sfx/${name}.mp3`);
 }
 
-function isSoundActive(sound: Audio.Sound): boolean {
+function isPlayerActive(player: AudioPlayer): boolean {
   for (const l of active) {
-    if (l.sound === sound) return true;
+    if (l.player === player) return true;
   }
   return false;
 }
@@ -83,37 +94,44 @@ function isSoundActive(sound: Audio.Sound): boolean {
 /** Release a finished/stopped instance: pooled ones rewind, transient ones unload. */
 function finish(l: Live): void {
   active.delete(l);
-  l.sound.setOnPlaybackStatusUpdate(null);
-  if (l.pooled) {
-    l.sound.stopAsync().catch(() => {});
-  } else {
-    l.sound.unloadAsync().catch(() => {});
+  l.subscription?.remove();
+  l.subscription = null;
+  try {
+    if (l.pooled) {
+      // Rewind the warm instance so the next play starts instantly from 0.
+      l.player.pause();
+      l.player.seekTo(0).catch(() => {});
+    } else {
+      l.player.remove();
+    }
+  } catch {
+    // Player already released — nothing to clean up.
   }
 }
 
 function fadeOut(l: Live, ms = 320): void {
-  void (async () => {
-    try {
-      const status = await l.sound.getStatusAsync();
-      if (!status.isLoaded) {
+  let start: number;
+  try {
+    start = l.player.volume;
+  } catch {
+    active.delete(l);
+    return;
+  }
+  const t0 = Date.now();
+  const iv = setInterval(() => {
+    const k = 1 - (Date.now() - t0) / ms;
+    if (k <= 0) {
+      clearInterval(iv);
+      finish(l);
+    } else {
+      try {
+        l.player.volume = Math.max(0, start * k);
+      } catch {
+        clearInterval(iv);
         active.delete(l);
-        return;
       }
-      const start = status.volume;
-      const t0 = Date.now();
-      const iv = setInterval(() => {
-        const k = 1 - (Date.now() - t0) / ms;
-        if (k <= 0) {
-          clearInterval(iv);
-          finish(l);
-        } else {
-          l.sound.setVolumeAsync(Math.max(0, start * k)).catch(() => {});
-        }
-      }, 40);
-    } catch {
-      active.delete(l);
     }
-  })();
+  }, 40);
 }
 
 export interface PlayOptions {
@@ -151,53 +169,41 @@ export function playSfx(name: SfxName, options: PlayOptions = {}): () => void {
     if (live && active.has(live)) fadeOut(live);
   };
 
-  void (async () => {
-    try {
-      const vol = Math.max(0, Math.min(1, volume));
-      const appliedMuted = muted;
-      const pooledSound = preloaded.get(name);
-      let l: Live;
-      if (pooledSound && !isSoundActive(pooledSound)) {
-        // Reuse the warm instance: rewind and fire.
-        await pooledSound.setStatusAsync({
-          shouldPlay: true,
-          positionMillis: 0,
-          volume: vol,
-          isMuted: appliedMuted,
-        });
-        l = { sound: pooledSound, pooled: true };
-      } else {
-        // Cold or overlapping play — spin up a transient instance.
-        const { sound } = await Audio.Sound.createAsync(
-          { uri: uriFor(name) },
-          { shouldPlay: true, volume: vol, isMuted: appliedMuted },
-        );
-        l = { sound, pooled: false };
-      }
-      live = l;
-      if (stopped) {
-        finish(l);
-        return;
-      }
-      active.add(l);
-      // Close the startup race: if global mute flipped while this sound was
-      // still loading (not yet in `active`), re-apply the current value now.
-      if (muted !== appliedMuted) {
-        l.sound.setIsMutedAsync(muted).catch(() => {});
-      }
-      l.sound.setOnPlaybackStatusUpdate((status) => {
-        if (!status.isLoaded) {
-          // Runtime media failure — treat as terminal so `active` stays clean.
-          if (status.error) finish(l);
+  try {
+    const vol = Math.max(0, Math.min(1, volume));
+    const pooledPlayer = preloaded.get(name);
+    let l: Live;
+    if (pooledPlayer && !isPlayerActive(pooledPlayer)) {
+      // Reuse the warm instance — finish() rewound it to 0, so just fire.
+      pooledPlayer.volume = vol;
+      pooledPlayer.muted = muted;
+      pooledPlayer.play();
+      l = { player: pooledPlayer, pooled: true, subscription: null };
+    } else {
+      // Cold or overlapping play — spin up a transient instance.
+      const player = createAudioPlayer({ uri: uriFor(name) });
+      player.volume = vol;
+      player.muted = muted;
+      player.play();
+      l = { player, pooled: false, subscription: null };
+    }
+    live = l;
+    active.add(l);
+    l.subscription = l.player.addListener(
+      "playbackStatusUpdate",
+      (status: AudioStatus) => {
+        if (status.didJustFinish) {
+          finish(l);
           return;
         }
-        if (status.didJustFinish) finish(l);
-      });
-      if (maxMs !== undefined) stopTimer = setTimeout(stop, maxMs);
-    } catch {
-      // SFX are non-critical — never let audio failures break the game.
-    }
-  })();
+        // Runtime media failure — treat as terminal so `active` stays clean.
+        if (!status.isLoaded && status.playbackState === "error") finish(l);
+      },
+    );
+    if (maxMs !== undefined) stopTimer = setTimeout(stop, maxMs);
+  } catch {
+    // SFX are non-critical — never let audio failures break the game.
+  }
 
   return stop;
 }
@@ -208,22 +214,16 @@ export function playRandomSfx(names: SfxName[], options: PlayOptions = {}): () =
   return name ? playSfx(name, options) : () => {};
 }
 
-/** In-flight preloads, so concurrent calls never double-load a sample. */
-const preloading = new Map<SfxName, Promise<void>>();
-
 /** Warm the audio cache so battle sounds start without a network hitch. */
 export function preloadSfx(names: SfxName[]): void {
   for (const name of names) {
-    if (preloaded.has(name) || preloading.has(name)) continue;
-    const job = Audio.Sound.createAsync({ uri: uriFor(name) }, { shouldPlay: false })
-      .then(({ sound }) => {
-        preloaded.set(name, sound);
-      })
-      .catch(() => {})
-      .finally(() => {
-        preloading.delete(name);
-      });
-    preloading.set(name, job);
+    if (preloaded.has(name)) continue;
+    try {
+      // Player creation is synchronous; the media loads in the background.
+      preloaded.set(name, createAudioPlayer({ uri: uriFor(name) }));
+    } catch {
+      // Preload is best-effort — playback falls back to a transient instance.
+    }
   }
 }
 
@@ -237,7 +237,9 @@ export function setSfxMuted(value: boolean): void {
     // Storage unavailable — mute still applies for this session.
   });
   active.forEach((l) => {
-    l.sound.setIsMutedAsync(value).catch(() => {});
+    try {
+      l.player.muted = value;
+    } catch {}
   });
   listeners.forEach((fn) => fn());
 }

@@ -25,12 +25,11 @@ Files to sync (pure TS, no DOM deps): `types.ts`, `engine.ts`, `ai.ts`, `mapData
 **ACL pitfall:** objects uploaded via the storage pane have no ACL metadata, so the SDK's `downloadObject` rejected them even on the public route. Fix: `downloadObject` accepts `{ assumePublic: true }`, which the public route passes *after* resolving the object inside the public search paths (so it stays safe). Any new public-serving route must do the same.
 
 ## Sound system
-`artifacts/mobile/lib/sfx.ts` — faithful expo-av port of the web engine (21 samples).
+`artifacts/mobile/lib/sfx.ts` — **expo-audio** engine (migrated from deprecated expo-av, Jul 2026), 21 samples.
 - `playSfx(name, { volume?, throttleMs?, maxMs? })` returns a **synchronous** stop handle (fade-out ~320ms). Never make it return a Promise — BattleView cleanup pushes handles into a ref synchronously.
-- Design: one warm pooled instance per sample (`preloadSfx`) + transient instances for overlap; mute persisted to AsyncStorage key `risk2.sound` ("off"/"on"); `useSfxMuted` via useSyncExternalStore; `playsInSilentModeIOS: true`.
-- **Race lessons (from code review):** (1) mute state must be re-applied after a sound's async load resolves — sounds mid-startup aren't in the active set when the global toggle runs; (2) preloads need an in-flight map or concurrent calls leak duplicate `Audio.Sound` instances; (3) treat non-loaded error status as terminal cleanup.
+- Design: one warm pooled `AudioPlayer` per sample (`preloadSfx`) + transient players for overlap; mute persisted to AsyncStorage key `risk2.sound` ("off"/"on"); `useSfxMuted` via useSyncExternalStore; audio mode `playsInSilentMode: true`.
+- **expo-audio simplifications vs expo-av:** `createAudioPlayer` is synchronous and `volume`/`muted` are sync properties, so the old async-load mute race and preload in-flight map are gone. Pooled players are rewound (`pause()` + `seekTo(0)`) at `finish()` time so replay just calls `play()`. `seekTo` takes **seconds**, not ms. Transient players must be `remove()`d on finish or they leak native objects; treat `!isLoaded && playbackState === "error"` status as terminal cleanup.
 - `hooks/useGameSounds.ts` ports the web sound director: `playActionSound(action)` for UI cues (wrap the reducer dispatch; AI orders use rawDispatch to skip cues) + state-transition effects for battle/fanfare/trumpet/chime.
-- **expo-av deprecation:** removed in SDK 54; migrate to `expo-audio` when upgrading SDK. Non-blocking for now.
 
 ## Components added / updated
 - `components/game/RiskDie.tsx` — authentic RISK II die sprites from object storage, tier tinting via `tintColor`
