@@ -86,6 +86,10 @@ Use the classic three-prop form (`textShadowColor`/`textShadowOffset`/`textShado
 - `fortifyUsed: boolean`, `deployLog: DeployLogEntry[]` (turn-flow redesign)
 **Any new GameState field must get a default in `normalizeState()` AND be copied in `cloneState()`** — saves are long-lived JSON; missing either breaks old saves or silently drops state.
 
+**Reducer identity invariants (verified Jul 2026):**
+- `cloneState` runs on EVERY dispatch, so nested objects (e.g. `lastBattle`) get fresh references on every action. UI "new event" detection must key on monotonic counters (`battlesFought`), never object identity — identity-keyed effects re-fire on unrelated dispatches (the occupy auto-advance kept resurrecting a dismissed battle card this way).
+- AI freeze hazard: the AI loop only re-ticks when dispatch produces a new state reference. If `aiNextAction` ever emits an action a reducer guard rejects (returns `previous`), React bails out and the AI freezes permanently. When adding AI actions or tightening reducer guards, keep the pair consistent (audited stall-free Jul 2026).
+
 ## Turn-flow conventions (Jul 2026 redesign)
 - Deploy = tap-to-place (DEPLOY count:1 per map tap) + UNDO_DEPLOY (reads `deployLog`); FORTIFY sets `fortifyUsed`, **never ends the turn** — human and AI must dispatch END_TURN explicitly (`game/ai.ts` does when `fortifyUsed`).
 - Battle scene pacing is a persisted user setting (`lib/battleScenes.ts`, AsyncStorage `risk2.battleScenes`, full/fast/off). Human-defender scenes only when a territory is lost or a capital is contested; everything else is percussion via `useGameSounds`.

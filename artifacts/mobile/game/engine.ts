@@ -917,7 +917,11 @@ export function gameReducer(previous: GameState, action: GameAction): GameState 
     }
 
     case "END_TURN": {
-      if (state.awaitingHandoff || state.pendingOccupy || state.phase === "chooseCapital") return previous;
+      // Only the combat phases may close a turn — a stray END_TURN during
+      // deployment or the setup rotations would strand unplaced armies or
+      // corrupt the draft order.
+      if (state.awaitingHandoff || state.pendingOccupy) return previous;
+      if (state.phase !== "attack" && state.phase !== "fortify") return previous;
       endTurn(state);
       return state;
     }
