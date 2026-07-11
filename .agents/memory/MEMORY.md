@@ -1,1 +1,2 @@
 - [World Domination mobile port](world-domination-mobile.md) — complete Expo app at artifacts/mobile; all game logic ported, key architecture decisions recorded.
+- [Published Expo runtime module gaps](expo-published-runtime.md) — published mobile shell registers fewer native views than Expo Go; expo-linear-gradient crashes in prod only, use react-native-svg.

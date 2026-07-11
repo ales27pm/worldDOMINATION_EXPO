@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
+import { GradientFill } from '@/components/GradientFill';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Colors } from '@/constants/colors';
 import { listHighScores } from '@/db/repository';
@@ -64,7 +64,7 @@ export default function TournamentScreen() {
   if (!session) {
     return (
       <View style={styles.root}>
-        <LinearGradient colors={['#0d0804', '#1a1005', '#221508']} style={StyleSheet.absoluteFillObject} />
+        <GradientFill colors={['#0d0804', '#1a1005', '#221508']} style={StyleSheet.absoluteFillObject} />
         <SafeAreaView style={styles.inner} edges={['top', 'bottom']}>
           <Pressable onPress={() => router.replace('/')} style={styles.back}>
             <Text style={styles.backText}>← Main Menu</Text>
@@ -148,7 +148,7 @@ export default function TournamentScreen() {
 
   return (
     <View style={styles.root}>
-      <LinearGradient colors={['#0d0804', '#1a1005', '#221508']} style={StyleSheet.absoluteFillObject} />
+      <GradientFill colors={['#0d0804', '#1a1005', '#221508']} style={StyleSheet.absoluteFillObject} />
       <SafeAreaView style={styles.inner} edges={['top', 'bottom']}>
         {/* Header */}
         <View style={styles.header}>

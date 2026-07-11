@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { GradientFill } from '@/components/GradientFill';
 import { Colors } from '@/constants/colors';
 import { Fonts } from '@/constants/typography';
 
@@ -14,11 +14,10 @@ const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
 
 export function ImperialDivider({ style }: { style?: StyleProp<ViewStyle> }) {
   return (
-    <LinearGradient
+    <GradientFill
+      horizontal
       colors={['transparent', Colors.goldDim, Colors.goldMid, Colors.goldDim, 'transparent']}
       locations={[0, 0.2, 0.5, 0.8, 1]}
-      start={{ x: 0, y: 0.5 }}
-      end={{ x: 1, y: 0.5 }}
       style={[styles.divider, style]}
     />
   );

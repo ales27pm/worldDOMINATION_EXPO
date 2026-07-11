@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
+import { GradientFill } from '@/components/GradientFill';
 import { useGame } from '@/context/GameContext';
 import { loadSaveSummary } from '@/db/repository';
 import type { SaveSummary } from '@/db/repository';
@@ -127,7 +127,7 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
-      <LinearGradient
+      <GradientFill
         colors={['#0d0804', '#1a1005', '#221508']}
         style={StyleSheet.absoluteFillObject}
       />
