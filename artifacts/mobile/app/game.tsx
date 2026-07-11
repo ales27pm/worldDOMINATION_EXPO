@@ -11,9 +11,9 @@ import { TERRITORY_MAP } from '@/game/mapData';
 import { tournamentResult } from '@/game/tournament';
 import { Colors } from '@/constants/colors';
 import type { GameAction, GameState, TerritoryId } from '@/game/types';
-import { preloadBattleViews } from '@/game/battleViews';
 import { playActionSound, useGameSounds } from '@/hooks/useGameSounds';
 import GameMap, { MAP_VIEW_LABELS, MAP_VIEW_MODES, type MapViewMode } from '@/components/game/GameMap';
+import { ContinentLegend } from '@/components/game/WorldBoard';
 import { TopBar } from '@/components/game/TopBar';
 import { FieldPanel, SectionHeader } from '@/components/game/FieldPanel';
 import GamePanel from '@/components/game/GamePanel';
@@ -196,11 +196,6 @@ function CampaignScreen({ game }: { game: GameState }) {
     return { interactive: inter, targets: tgts };
   }, [game, selected, isHumanActive]);
 
-  // Pre-warm the cinematic backdrops as soon as an assault is possible.
-  useEffect(() => {
-    if (game.phase === 'attack' && targets.size > 0) preloadBattleViews(targets);
-  }, [game.phase, targets]);
-
   // ── Territory tap handler ──────────────────────────────────────────────────
   const handleTerritoryTap = useCallback((id: TerritoryId) => {
     if (!isHumanActive) return;
@@ -319,6 +314,11 @@ function CampaignScreen({ game }: { game: GameState }) {
         />
       </View>
 
+      {/* Continent bonuses — screen-space so map panning can't slice it */}
+      <View style={styles.legendOverlay} pointerEvents="none">
+        <ContinentLegend />
+      </View>
+
       {/* Floating imperial command bar */}
       <SafeAreaView edges={['top']} style={styles.topBar} pointerEvents="box-none">
         <TopBar
@@ -410,6 +410,7 @@ function CampaignScreen({ game }: { game: GameState }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
+  legendOverlay: { position: 'absolute', left: 10, bottom: 128, zIndex: 5 },
   topBar: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 },
   viewRail: { alignItems: 'flex-start', paddingLeft: 8, paddingTop: 8 },
   viewModeBtn: {

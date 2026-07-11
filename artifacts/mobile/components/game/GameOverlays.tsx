@@ -41,8 +41,32 @@ export function HandoffOverlay({ game, dispatch }: { game: GameState; dispatch: 
 // ─── Occupy Overlay ───────────────────────────────────────────────────────────
 export function OccupyOverlay({ game, dispatch }: { game: GameState; dispatch: (a: GameAction) => void }) {
   const pending = game.pendingOccupy;
-  const [count, setCount] = useState(() => pending?.max ?? 1);
   if (!pending) return null;
+  // AI generals resolve their own occupations — never flash the sheet for them.
+  if (!game.players[game.currentPlayer]?.isHuman) return null;
+  return (
+    <OccupySheet
+      // Re-key per conquest so the count re-initializes to the fresh range —
+      // the sheet is otherwise permanently stuck at its first-mount state.
+      key={`${pending.from}-${pending.to}-${pending.min}-${pending.max}`}
+      game={game}
+      pending={pending}
+      dispatch={dispatch}
+    />
+  );
+}
+
+function OccupySheet({
+  game,
+  pending,
+  dispatch,
+}: {
+  game: GameState;
+  pending: NonNullable<GameState['pendingOccupy']>;
+  dispatch: (a: GameAction) => void;
+}) {
+  // Default to advancing in force.
+  const [count, setCount] = useState(pending.max);
   const fromName = TERRITORY_MAP[pending.from]?.name ?? pending.from;
   const toName = TERRITORY_MAP[pending.to]?.name ?? pending.to;
   const fromArmies = game.territories[pending.from]?.armies ?? 0;

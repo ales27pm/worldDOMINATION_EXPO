@@ -1,21 +1,16 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Animated, Image, StyleSheet, View } from "react-native";
-import { assetUrl } from "@/lib/assetUrl";
+import { FIREWORK_FRAMES } from "@/lib/gameArt";
 
 /**
  * The original RISK II victory fireworks — 21 blue-keyed frames extracted
- * from the game's sprite archive, replayed as staggered bursts across the
- * screen. Rendered as an absolute overlay; mount it when the game is won.
+ * from the game's sprite archive (bundled with the app), replayed as
+ * staggered bursts across the screen. Rendered as an absolute overlay;
+ * mount it when the game is won.
  */
 
-const FRAME_COUNT = 21;
+const FRAME_COUNT = FIREWORK_FRAMES.length;
 const FRAME_MS = 60;
-const BURST_COUNT = 5;
-
-const FRAMES = Array.from({ length: FRAME_COUNT }, (_, i) => {
-  const n = String(i).padStart(2, "0");
-  return assetUrl(`public/risk/fireworks/f${n}.png`);
-});
 
 interface Burst {
   id: number;
@@ -74,7 +69,7 @@ function FireworkBurst({ burst }: { burst: Burst }) {
 
   return (
     <Image
-      source={{ uri: FRAMES[frame] }}
+      source={FIREWORK_FRAMES[frame]}
       style={[
         styles.burst,
         {

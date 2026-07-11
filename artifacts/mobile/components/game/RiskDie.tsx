@@ -1,6 +1,6 @@
 import React from "react";
 import { Image, StyleSheet, View } from "react-native";
-import { assetUrl } from "@/lib/assetUrl";
+import { DICE } from "@/lib/gameArt";
 import type { DiceTier } from "@/game/types";
 
 /**
@@ -32,17 +32,15 @@ interface RiskDieProps {
 export function RiskDie({ value, tier, size = 40 }: RiskDieProps) {
   const face = Math.min(6, Math.max(1, Math.round(value)));
   const { sprite, tint } = TIER_STYLE[tier];
-  const uri = assetUrl(`public/risk/dice/${sprite}_${face}.png`);
+  const source = DICE[sprite][face - 1];
 
   return (
     <View style={[styles.wrap, { width: size, height: size }]}>
       <Image
-        source={{ uri }}
-        style={[
-          styles.img,
-          { width: size, height: size },
-          tint ? { tintColor: tint } : undefined,
-        ]}
+        source={source}
+        // tintColor as a prop — react-native-web deprecates it in style.
+        tintColor={tint || undefined}
+        style={[styles.img, { width: size, height: size }]}
         resizeMode="contain"
       />
     </View>

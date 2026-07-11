@@ -34,6 +34,12 @@ export interface AttentionPoint {
 /** Deepest manual pinch/wheel zoom (view width in map units). */
 export const MANUAL_MIN_VW = scaleMapDistance(170);
 
+/**
+ * Horizontal slack beyond the board edges so edge territories' overhanging
+ * sprites and labels (New Zealand, Alaska) are not sliced by the frame.
+ */
+export const EDGE_PAD = scaleMapDistance(28);
+
 /** Fraction of total attention weight a candidate frame must capture. */
 const COVERAGE_TARGET = 0.82;
 /** Zoom ladder resolution between tightest and widest candidate frames. */
@@ -73,7 +79,7 @@ export function clampCamera(cam: Camera, aspect: number, minVw: number = MANUAL_
   const vh = vw / safeAspect;
   return {
     vw,
-    cx: vw >= MAP_W ? MAP_W / 2 : clamp(cam.cx, vw / 2, MAP_W - vw / 2),
+    cx: vw >= MAP_W ? MAP_W / 2 : clamp(cam.cx, vw / 2 - EDGE_PAD, MAP_W - vw / 2 + EDGE_PAD),
     cy: vh >= MAP_H ? MAP_H / 2 : clamp(cam.cy, vh / 2, MAP_H - vh / 2),
   };
 }
@@ -88,6 +94,25 @@ export function viewBoxFor(cam: Camera, aspect: number): string {
 /** Whole-board camera (letterboxed on mismatched aspects — the widest legal view). */
 export function fullCamera(aspect: number): Camera {
   return { cx: MAP_W / 2, cy: MAP_H / 2, vw: fitVw(aspect > 0 ? aspect : MAP_W / MAP_H) };
+}
+
+/** Vertical margin factor for the portrait default view (a hint of parchment above and below the board). */
+const PORTRAIT_MARGIN = 1.06;
+
+/**
+ * Widest AUTO camera for a viewport. Landscape-ish aspects use the classic
+ * contain fit; tall portrait screens get a height-fit view instead — the
+ * contain view on a phone is ~2/3 empty parchment bands.
+ */
+export function defaultVw(aspect: number): number {
+  const a = aspect > 0 ? aspect : MAP_W / MAP_H;
+  if (a >= MAP_W / MAP_H) return fitVw(a);
+  return Math.min(MAP_W, MAP_H * PORTRAIT_MARGIN * a);
+}
+
+/** Default resting camera — centered at the widest auto view. */
+export function defaultCamera(aspect: number): Camera {
+  return { cx: MAP_W / 2, cy: MAP_H / 2, vw: defaultVw(aspect) };
 }
 
 interface Box {
@@ -144,8 +169,8 @@ interface WindowResult {
  * axis-aligned containment always lies on one, so this scan is exact.
  */
 function bestWindow(boxes: Box[], vw: number, vh: number, req: Bounds | null): WindowResult {
-  const xMin = vw >= MAP_W ? (MAP_W - vw) / 2 : 0;
-  const xMax = vw >= MAP_W ? (MAP_W - vw) / 2 : MAP_W - vw;
+  const xMin = vw >= MAP_W ? (MAP_W - vw) / 2 : -EDGE_PAD;
+  const xMax = vw >= MAP_W ? (MAP_W - vw) / 2 : MAP_W - vw + EDGE_PAD;
   const yMin = vh >= MAP_H ? (MAP_H - vh) / 2 : 0;
   const yMax = vh >= MAP_H ? (MAP_H - vh) / 2 : MAP_H - vh;
   let fxLo = xMin;
@@ -196,16 +221,21 @@ function bestWindow(boxes: Box[], vw: number, vh: number, req: Bounds | null): W
  */
 export function cameraForAttention(points: AttentionPoint[], aspect: number, minVw: number): Camera {
   const safeAspect = aspect > 0 ? aspect : MAP_W / MAP_H;
-  if (points.length === 0) return fullCamera(safeAspect);
+  if (points.length === 0) return defaultCamera(safeAspect);
 
   const boxes = toBoxes(points);
   const requiredBoxes = boxes.filter((b) => b.required);
   const req = requiredBoxes.length > 0 ? unionBounds(requiredBoxes) : null;
   const total = boxes.reduce((sum, b) => sum + b.weight, 0);
-  const maxVw = fitVw(safeAspect);
+  // The width the required points genuinely need on screen together.
+  const reqVw = req ? Math.max(req.x1 - req.x0, (req.y1 - req.y0) * safeAspect) : 0;
+  // The zoom ladder normally tops out at the portrait-aware default view (no
+  // empty bands), but long adjacencies — Alaska↔Kamchatka, Japan↔Hawaii —
+  // must still fit whole, so the cap stretches up to the letterboxed contain
+  // view when required points demand it.
+  const maxVw = Math.min(Math.max(defaultVw(safeAspect), reqVw), fitVw(safeAspect));
 
-  let lo = minVw;
-  if (req) lo = Math.max(lo, req.x1 - req.x0, (req.y1 - req.y0) * safeAspect);
+  let lo = Math.max(minVw, reqVw);
   lo = Math.min(lo, maxVw);
 
   let fallback: Camera | null = null;
@@ -218,7 +248,7 @@ export function cameraForAttention(points: AttentionPoint[], aspect: number, min
     if (win.weight >= COVERAGE_TARGET * total) return cam;
     if (lo >= maxVw) break;
   }
-  return fallback ?? fullCamera(safeAspect);
+  return fallback ?? defaultCamera(safeAspect);
 }
 
 /**

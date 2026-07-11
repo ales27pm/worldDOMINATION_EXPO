@@ -8,6 +8,7 @@ import Animated, {
   useSharedValue,
 } from 'react-native-reanimated';
 import {
+  EDGE_PAD,
   MANUAL_MIN_VW,
   MAP_H,
   MAP_W,
@@ -15,6 +16,7 @@ import {
   cameraForAttention,
   clampCamera,
   computeAttention,
+  defaultCamera,
   fullCamera,
   type Camera,
 } from '@/game/camera';
@@ -110,7 +112,7 @@ export function MapViewport({ game, selected, onBoardTap, children }: MapViewpor
     const points = computeAttention(game, selected);
     const cam =
       points.length === 0
-        ? fullCamera(aspect)
+        ? defaultCamera(aspect)
         : cameraForAttention(points, aspect, autoMinVw(layout.w));
     setTarget(cam, firstFrame.current);
     firstFrame.current = false;
@@ -144,7 +146,10 @@ export function MapViewport({ game, selected, onBoardTap, children }: MapViewpor
       const fit = Math.max(MAP_W, MAP_H * asp);
       const v = Math.min(Math.max(nvw, Math.min(MANUAL_MIN_VW, fit)), fit);
       const vh = v / asp;
-      const rcx = v >= MAP_W ? MAP_W / 2 : Math.min(Math.max(ncx, v / 2), MAP_W - v / 2);
+      const rcx =
+        v >= MAP_W
+          ? MAP_W / 2
+          : Math.min(Math.max(ncx, v / 2 - EDGE_PAD), MAP_W - v / 2 + EDGE_PAD);
       const rcy = vh >= MAP_H ? MAP_H / 2 : Math.min(Math.max(ncy, vh / 2), MAP_H - vh / 2);
       return { cx: rcx, cy: rcy, vw: v };
     },
@@ -226,7 +231,7 @@ export function MapViewport({ game, selected, onBoardTap, children }: MapViewpor
         const points = computeAttention(game, selected);
         const cam =
           points.length === 0
-            ? fullCamera(aspect)
+            ? defaultCamera(aspect)
             : cameraForAttention(points, aspect, autoMinVw(layout.w));
         setTarget(cam);
         return;
@@ -304,7 +309,7 @@ export function MapViewport({ game, selected, onBoardTap, children }: MapViewpor
     const points = computeAttention(game, selected);
     const cam =
       points.length === 0
-        ? fullCamera(aspect)
+        ? defaultCamera(aspect)
         : cameraForAttention(points, aspect, autoMinVw(layout.w));
     setTarget(cam);
   }, [game, selected, aspect, layout.w, setMode, setTarget]);

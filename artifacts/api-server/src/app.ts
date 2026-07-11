@@ -61,11 +61,15 @@ const globalLimiter = rateLimit({
   message: { error: "Too many requests, please try again later." },
 });
 
-// Stricter limiter for the public-object storage endpoint, which triggers
-// multiple GCS API calls (and egress) per request.
+// Limiter for the public-object storage endpoint. The ceiling is high on
+// purpose: these are immutable static game assets, and a single game screen
+// legitimately fires dozens of image/audio requests in one burst (mobile
+// clients never retry a failed image, so a 429 leaves a permanent hole).
+// Long-lived Cache-Control headers (see routes/storage.ts) keep repeat
+// traffic off this endpoint entirely.
 const storageLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 60,
+  max: 600,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: clientIpKey,
@@ -114,12 +118,26 @@ app.use(
   }),
 );
 
-app.use(globalLimiter);
+// Static asset serving is governed solely by its own (higher) limiter below —
+// stacking the global limiter on top would re-throttle legitimate asset bursts.
+const STORAGE_PATH_PREFIX = "/api/storage/public-objects";
+// Exact segment-boundary match, mirroring how app.use() mounts the storage
+// limiter below — a prefix-like path such as "/api/storage/public-objectsX"
+// must NOT slip past the global limiter unthrottled.
+const isStoragePath = (path: string) =>
+  path === STORAGE_PATH_PREFIX || path.startsWith(STORAGE_PATH_PREFIX + "/");
+app.use((req, res, next) => {
+  if (isStoragePath(req.path)) {
+    next();
+    return;
+  }
+  globalLimiter(req, res, next);
+});
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Apply stricter rate limiting to the storage serving endpoint.
-app.use("/api/storage/public-objects", storageLimiter);
+// Rate limiting for the storage serving endpoint.
+app.use(STORAGE_PATH_PREFIX, storageLimiter);
 
 app.use("/api", router);
 

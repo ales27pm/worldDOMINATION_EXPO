@@ -1,6 +1,6 @@
 import React from 'react';
 import { Image as RNImage, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
-import { PIECE_ART } from '@/lib/art';
+import { PIECES } from '@/lib/gameArt';
 import type { PieceType } from '@/game/pieces';
 
 /**
@@ -23,25 +23,33 @@ export const MAP_PIECE_BOX: Record<PieceType, { w: number; h: number }> = {
 const TINT_OPACITY = 0.55;
 
 function TintedSprite({ type, color }: { type: PieceType; color: string }) {
-  const uri = PIECE_ART[type];
+  const source = PIECES[type];
   return (
     <>
       <RNImage
-        source={{ uri }}
-        style={StyleSheet.absoluteFillObject}
+        source={source}
+        style={styles.fill}
         resizeMode="contain"
         fadeDuration={0}
       />
       <RNImage
-        source={{ uri }}
+        source={source}
         tintColor={color}
-        style={[StyleSheet.absoluteFillObject, { opacity: TINT_OPACITY }]}
+        style={[styles.fill, { opacity: TINT_OPACITY }]}
         resizeMode="contain"
         fadeDuration={0}
       />
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  // Bundled (require'd) images carry an intrinsic-size style on react-native-web,
+  // and inset-only absoluteFill loses to it (width/height beat right/bottom in
+  // CSS) — the sprite then renders at source pixel size, dwarfing the board.
+  // Explicit 100% sizing wins the style merge on web and native alike.
+  fill: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
+});
 
 /**
  * A miniature standing on the board: bottom-center anchored at (cx, baseY),

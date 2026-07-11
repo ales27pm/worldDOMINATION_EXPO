@@ -5,8 +5,6 @@ import { assetUrl } from "./assetUrl";
  * every image mirrored into object storage under public/risk.
  */
 export const ART = {
-  /** The painted world board — golden parchment ocean, pastel continents, ink borders. */
-  worldBoard: assetUrl("public/risk/world-map.png"),
   /** Aged nautical-chart parchment — map sea underlay and panel texture. */
   seaParchment: assetUrl("public/risk/art/sea-parchment.png"),
   /** Engraved antique compass rose (transparent). */
@@ -23,17 +21,4 @@ export const ART = {
   laurelWreath: assetUrl("public/risk/art/laurel-wreath.png"),
   /** Napoleonic cavalry-charge oil painting — main menu hero. */
   heroPainting: assetUrl("public/risk/art/hero-painting.png"),
-} as const;
-
-/**
- * White-plastic playing piece miniatures (transparent PNGs) — tinted per
- * player color at render time.
- */
-export const PIECE_ART = {
-  /** Foot soldier with musket — worth 1 troop. */
-  infantry: assetUrl("public/risk/art/piece-infantry.png"),
-  /** Mounted hussar with raised saber — worth 5 troops. */
-  cavalry: assetUrl("public/risk/art/piece-cavalry.png"),
-  /** Field cannon — worth 10 troops. */
-  artillery: assetUrl("public/risk/art/piece-artillery.png"),
 } as const;

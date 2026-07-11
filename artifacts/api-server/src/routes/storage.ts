@@ -76,6 +76,13 @@ router.get(
       res.status(response.status);
       response.headers.forEach((value, key) => res.setHeader(key, value));
 
+      // Game art is immutable once uploaded — aggressive client caching keeps
+      // repeat visits off the network (and off the rate limiter) entirely.
+      res.setHeader(
+        "Cache-Control",
+        "public, max-age=31536000, immutable",
+      );
+
       if (response.body) {
         const nodeStream = Readable.fromWeb(
           response.body as ReadableStream<Uint8Array>,

@@ -9,7 +9,8 @@ import {
   View,
 } from "react-native";
 import { Colors } from "@/constants/colors";
-import { battleViewUrl } from "@/game/battleViews";
+import { GradientFill } from "@/components/GradientFill";
+import { battleViewSource } from "@/game/battleViews";
 import { playSfx, playRandomSfx, type SfxName } from "@/lib/sfx";
 import { TERRITORY_MAP } from "@/game/mapData";
 import type { BattleReport, GameState } from "@/game/types";
@@ -106,17 +107,27 @@ export function BattleView({ game }: Props) {
   const defender = game.players[scene.defender];
   const fromName = TERRITORY_MAP[scene.from]?.name ?? scene.from;
   const toName = TERRITORY_MAP[scene.to]?.name ?? scene.to;
-  const imgUri = battleViewUrl(scene.to);
+  const backdrop = battleViewSource(scene.to);
 
   return (
     <Modal visible transparent animationType="fade" statusBarTranslucent>
       <View style={styles.root}>
-        {/* Territory aerial painting */}
-        <Image
-          source={{ uri: imgUri }}
-          style={StyleSheet.absoluteFill}
-          resizeMode="cover"
-        />
+        {/* Territory aerial painting (bundled) — themed night field when a
+            territory has no recovered painting (extended-map additions). */}
+        {backdrop !== undefined ? (
+          <Image
+            source={backdrop}
+            // Explicit size: bundled images otherwise render at intrinsic
+            // pixel size on web (inset-only styles lose to it).
+            style={[StyleSheet.absoluteFill, styles.backdropFill]}
+            resizeMode="cover"
+          />
+        ) : (
+          <GradientFill
+            colors={["#3a2a16", "#1c1208", "#080502"]}
+            style={StyleSheet.absoluteFill}
+          />
+        )}
         {/* Dark vignette */}
         <View style={styles.vignette} />
 
@@ -201,6 +212,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+  backdropFill: { width: '100%', height: '100%' },
   vignette: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.52)",

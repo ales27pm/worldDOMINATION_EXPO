@@ -11,7 +11,7 @@ import Svg, {
   Rect,
   Stop,
 } from 'react-native-svg';
-import { ART } from '@/lib/art';
+import { WORLD_BOARD } from '@/lib/gameArt';
 import { MapPiece } from '@/components/game/PieceSprite';
 import { borderThreat, largestEmpire } from '@/game/analysis';
 import { activeTerritories, CONTINENTS, TERRITORY_MAP } from '@/game/mapData';
@@ -307,10 +307,12 @@ export const WorldBoard = React.memo(function WorldBoard({
 
   return (
     <View style={styles.board} pointerEvents="none">
-      {/* The painted Risk II world board */}
+      {/* The painted Risk II world board (bundled with the app). Explicit
+          size — bundled images otherwise render at intrinsic pixel size on
+          web (inset-only styles lose the merge against it). */}
       <RNImage
-        source={{ uri: ART.worldBoard }}
-        style={StyleSheet.absoluteFillObject}
+        source={WORLD_BOARD}
+        style={[StyleSheet.absoluteFillObject, { width: W, height: H }]}
         resizeMode="stretch"
         fadeDuration={0}
       />
@@ -531,18 +533,6 @@ export const WorldBoard = React.memo(function WorldBoard({
         );
       })}
 
-      {/* Continent legend */}
-      <View pointerEvents="none" style={styles.legend}>
-        {(Object.keys(CONTINENTS) as ContinentId[]).map((id) => (
-          <View key={id} style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: CONTINENTS[id].color }]} />
-            <Text style={styles.legendText}>
-              {CONTINENTS[id].name} +{CONTINENTS[id].bonus}
-            </Text>
-          </View>
-        ))}
-      </View>
-
       {/* Double map frame */}
       <Svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={styles.svg} pointerEvents="none">
         <Rect
@@ -621,28 +611,51 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 3,
   },
-  legend: {
-    position: 'absolute',
-    left: scaleBoard(14),
-    top: H - scaleBoard(26),
-    flexDirection: 'row',
+});
+
+// ─── Continent legend (screen-space) ─────────────────────────────────────────
+
+/**
+ * Continent bonus legend — rendered by the game screen's floating chrome, not
+ * on the board itself. Pinned to board space it was sliced off by any camera
+ * pan or portrait framing.
+ */
+export function ContinentLegend() {
+  return (
+    <View style={legendStyles.wrap} pointerEvents="none">
+      {(Object.keys(CONTINENTS) as ContinentId[]).map((id) => (
+        <View key={id} style={legendStyles.item}>
+          <View style={[legendStyles.dot, { backgroundColor: CONTINENTS[id].color }]} />
+          <Text style={legendStyles.text}>
+            {CONTINENTS[id].name} +{CONTINENTS[id].bonus}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const legendStyles = StyleSheet.create({
+  wrap: {
+    backgroundColor: 'rgba(21,13,9,0.62)',
+    borderWidth: 1,
+    borderColor: 'rgba(222,190,115,0.35)',
+    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    gap: 3,
   },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: scaleBoard(128),
-    gap: scaleBoard(5),
+  item: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(222,190,115,0.6)',
   },
-  legendDot: {
-    width: scaleBoard(10),
-    height: scaleBoard(10),
-    borderRadius: scaleBoard(5),
-    borderWidth: scaleBoard(0.8),
-    borderColor: INK,
-  },
-  legendText: {
-    color: '#5b4020',
+  text: {
+    color: 'rgba(238,220,180,0.92)',
     fontFamily: Fonts.map,
-    fontSize: scaleBoard(10.5),
+    fontSize: 9.5,
   },
 });

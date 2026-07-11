@@ -3,7 +3,7 @@ import type { ContinentDef, ContinentId, TerritoryDef, TerritoryId } from "./typ
 /**
  * World map data ported from RiskConquest MapData.swift.
  * Coordinates are normalized (0..1) positions calibrated against the painted
- * world-board artwork (ART.worldBoard, 3:2 aspect).
+ * world-board artwork (WORLD_BOARD in lib/gameArt, 3:2 aspect).
  */
 export const CONTINENTS: Record<ContinentId, ContinentDef> = {
   northAmerica: { id: "northAmerica", name: "North America", bonus: 5, color: "#d9b167" },
