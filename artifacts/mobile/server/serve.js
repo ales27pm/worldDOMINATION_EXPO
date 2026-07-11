@@ -15,6 +15,7 @@ const path = require('path');
 
 const STATIC_ROOT = path.resolve(__dirname, '..', 'static-build');
 const TEMPLATE_PATH = path.resolve(__dirname, 'templates', 'landing-page.html');
+const ICON_PATH = path.resolve(__dirname, '..', 'assets', 'images', 'icon.png');
 const basePath = (process.env.BASE_PATH || '/').replace(/\/+$/, '');
 
 const MIME_TYPES = {
@@ -81,6 +82,20 @@ function serveLandingPage(req, res, landingPageTemplate, appName) {
   res.end(html);
 }
 
+function serveIcon(res) {
+  if (!fs.existsSync(ICON_PATH)) {
+    res.writeHead(404);
+    res.end('Not Found');
+    return;
+  }
+
+  res.writeHead(200, {
+    'content-type': 'image/png',
+    'cache-control': 'public, max-age=86400',
+  });
+  res.end(fs.readFileSync(ICON_PATH));
+}
+
 function serveStaticFile(urlPath, res) {
   const safePath = path.normalize(urlPath).replace(/^(\.\.(\/|\\|$))+/, '');
   const filePath = path.join(STATIC_ROOT, safePath);
@@ -113,6 +128,10 @@ const server = http.createServer((req, res) => {
 
   if (basePath && pathname.startsWith(basePath)) {
     pathname = pathname.slice(basePath.length) || '/';
+  }
+
+  if (pathname === '/favicon.png' || pathname === '/apple-touch-icon.png') {
+    return serveIcon(res);
   }
 
   if (pathname === '/' || pathname === '/manifest') {
