@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" type="image/png" href="favicon.png" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <link rel="preconnect" href="https://unpkg.com" crossorigin />
     <style>
       * {
         box-sizing: border-box;
@@ -395,9 +396,12 @@
       </div>
     </div>
 
-    <script src="https://unpkg.com/qr-code-styling@1.6.0/lib/qr-code-styling.js"></script>
+    <script
+      src="https://unpkg.com/qr-code-styling@1.6.0/lib/qr-code-styling.js"
+      defer
+    ></script>
     <script>
-      (function () {
+      document.addEventListener("DOMContentLoaded", function () {
         const ua = navigator.userAgent;
         const loadingEl = document.getElementById("loading");
         const contentEl = document.getElementById("content");
@@ -455,7 +459,7 @@
             contentEl.style.display = "block";
           }, 500);
         }
-      })();
+      });
     </script>
   </body>
 </html>
