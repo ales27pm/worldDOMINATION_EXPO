@@ -115,6 +115,14 @@ function serveIcon(res) {
   res.end(fs.readFileSync(ICON_PATH));
 }
 
+function serveRobotsTxt(res) {
+  res.writeHead(200, {
+    'content-type': 'text/plain; charset=utf-8',
+    'cache-control': 'public, max-age=86400',
+  });
+  res.end('User-agent: *\nAllow: /\n');
+}
+
 function serveStaticFile(urlPath, res) {
   const safePath = path.normalize(urlPath).replace(/^(\.\.(\/|\\|$))+/, '');
   const filePath = path.join(STATIC_ROOT, safePath);
@@ -155,6 +163,10 @@ const server = http.createServer((req, res) => {
 
   if (pathname === OG_IMAGE_ROUTE) {
     return serveOgImage(res);
+  }
+
+  if (pathname === '/robots.txt') {
+    return serveRobotsTxt(res);
   }
 
   if (pathname === '/' || pathname === '/manifest') {
