@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-A Node.js/Express 5 API server (TypeScript, pnpm workspaces) backed by PostgreSQL (Drizzle ORM) and Google Cloud Storage (Replit Object Storage). The app is deployed publicly on Replit autoscale at `https://code-react-native.replit.app`. Companion artifacts include a mobile (Expo/React Native) game app and a design/mockup sandbox.
+A Node.js/Express 5 API server (TypeScript, pnpm workspaces) backed by PostgreSQL (Drizzle ORM) and Google Cloud Storage (Replit Object Storage). The app is deployed publicly on Replit autoscale at `https://code-react-native.replit.app`. Companion artifacts include a mobile (Expo/React Native) game app ("World Domination", fully client-side storage via AsyncStorage/SQLite — no server-side game backend) and a design/mockup sandbox (dev-only canvas).
 
 The API currently exposes:
 - `GET /api/healthz` — health check, unauthenticated
@@ -11,16 +11,16 @@ The API currently exposes:
 ## Assets
 
 - **GCS object storage** — public and private buckets. Private objects are protected by an ACL system (`objectAcl.ts`). Public objects are intentionally served without auth.
-- **Database** — PostgreSQL connection managed via `DATABASE_URL` env var. Contains future application data.
+- **Database** — PostgreSQL connection managed via `DATABASE_URL` env var. Schema (`lib/db/src/schema/index.ts`) is currently empty boilerplate — no application data yet.
 - **Application secrets** — `DATABASE_URL`, GCP credentials (acquired via Replit sidecar at `http://127.0.0.1:1106`), `PUBLIC_OBJECT_SEARCH_PATHS`, `PRIVATE_OBJECT_DIR`.
 - **Replit sidecar** — internal endpoint used for GCP token exchange and signed URL generation.
 
 ## Trust Boundaries
 
-- **Browser/Client → API** — all client requests cross this boundary. Currently no authentication or authorization is enforced at the API layer.
+- **Browser/Client → API** — all client requests cross this boundary. Currently no authentication or authorization is enforced at the API layer (no user-scoped endpoints exist yet).
 - **API → GCS** — API uses GCP external account credentials via the Replit sidecar. Compromise of sidecar endpoint or credential leak would expose all storage.
-- **API → PostgreSQL** — direct connection; SQL injection would give full DB access.
-- **Public → Private GCS** — the ACL system (`objectAcl.ts`) enforces this boundary per-object, but the current public-object serving route **does not check `aclPolicy.visibility` before streaming file content**. Path-based separation (public vs. private dirs) is the only runtime enforcement.
+- **API → PostgreSQL** — direct connection; SQL injection would give full DB access. No custom queries exist yet beyond Drizzle scaffolding.
+- **Public → Private GCS** — the ACL system (`objectAcl.ts`) enforces this boundary per-object. `ObjectStorageService.downloadObject()` gates on `opts.assumePublic === true || aclPolicy.visibility === 'public'` and throws `ObjectNotFoundError` otherwise — the public-objects route passes `assumePublic: true` only because it already restricts the search to `PUBLIC_OBJECT_SEARCH_PATHS`, and any object outside that path space or without public ACL is correctly rejected. This boundary is properly enforced in the current code.
 
 ## Scan Anchors
 
@@ -28,7 +28,8 @@ The API currently exposes:
 - Highest-risk code: `artifacts/api-server/src/lib/objectStorage.ts`, `artifacts/api-server/src/lib/objectAcl.ts`, `artifacts/api-server/src/routes/storage.ts`
 - Public (unauthenticated) surfaces: `GET /api/healthz`, `GET /api/storage/public-objects/*filePath`
 - Authenticated / admin surfaces: none currently implemented
-- Dev-only: `artifacts/mobile/` (Expo mobile app, client-side only), `artifacts/mockup-sandbox/` (design canvas)
+- Dev-only: `artifacts/mobile/` (Expo mobile app, fully client-side — game state persists locally via AsyncStorage/SQLite in `artifacts/mobile/db/`, no server component reads/writes it), `artifacts/mockup-sandbox/` (design canvas)
+- Boilerplate/template code, not project-specific: `artifacts/mobile/server/serve.js` and `artifacts/mobile/server/templates/landing-page.html` are copied verbatim from the `expo` artifact skill template (`.local/skills/artifacts/artifacts/expo/files/server/serve.js`). It reflects `Host`/`X-Forwarded-Host` into the landing page HTML unescaped; this is a shared platform template behind Replit's reverse proxy (not attacker-controlled in normal deployment) and not something this project's code introduced — treat changes here as template-level, not app-level, findings.
 
 ## Threat Categories
 
@@ -44,9 +45,10 @@ The `filePath` parameter in the public objects endpoint is sanitized: encoded tr
 
 ### Information Disclosure
 
-- **ACL policy not enforced before serving** (OPEN FINDING): `downloadObject()` fetches the ACL policy but uses it only to set `Cache-Control` headers — it does not abort when `aclPolicy.visibility !== 'public'`. An object stored in a public search path with a private ACL will be served to any unauthenticated caller. The serving route MUST check `aclPolicy.visibility === 'public'` and return 403 before streaming.
+- ACL enforcement before serving is correctly implemented: `downloadObject()` throws `ObjectNotFoundError` unless the object is under a public search path (`assumePublic`) or has `aclPolicy.visibility === 'public'`. There is no current bypass allowing a private-ACL object to be streamed publicly.
 - CORS is configured with an allowlist of allowed origins derived from `REPLIT_DOMAINS` and `ALLOWED_ORIGINS` env vars. `credentials: false` is enforced until a session mechanism is introduced. This is correctly hardened.
 - The sidecar endpoint (`http://127.0.0.1:1106`) must remain internal. It is not validated to be localhost-only in application code, relying on Replit platform networking.
+- `logger.ts` redacts `req.headers.authorization`, `req.headers.cookie`, and `res.headers['set-cookie']` from logs — appropriate given no session mechanism exists yet.
 
 ### Denial of Service
 
