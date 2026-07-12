@@ -1,0 +1,9 @@
+{
+  "apps": [
+    {
+      "name": "RiskConquest",
+      "framework": "swift",
+      "xcodeproj": "RiskConquest.xcodeproj"
+    }
+  ]
+}
