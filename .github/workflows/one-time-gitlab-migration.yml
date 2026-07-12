@@ -20,7 +20,7 @@ jobs:
       - name: Mirror source branches and tags into this repository
         env:
           GH_TOKEN: ${{ github.token }}
-          TRIGGER_ISSUE: ${{ github.event.issue.number }}
+          REPORT_ISSUE: "3"
         run: |
           set -euo pipefail
           gitlab_source="https://gitlab.com/ales27pm/worldDOMINATION.git"
@@ -28,25 +28,36 @@ jobs:
           destination_url="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
 
           comment() {
-            if [ -n "${TRIGGER_ISSUE:-}" ]; then
-              gh issue comment "$TRIGGER_ISSUE" --repo "$GITHUB_REPOSITORY" --body "$1" || true
-            fi
+            gh issue comment "$REPORT_ISSUE" --repo "$GITHUB_REPOSITORY" --body "$1" || true
           }
 
-          comment "Migration workflow started."
+          comment "Migration workflow started for event ${GITHUB_EVENT_NAME}."
 
           if git clone --mirror "$gitlab_source" source.git; then
             comment "GitLab source cloned successfully."
           else
             rm -rf source.git
             comment "GitLab could not be cloned anonymously; using the exact existing GitHub mirror ales27pm/worldDOMINATION as the fallback source."
-            git clone --mirror "$github_fallback" source.git
+            if ! git clone --mirror "$github_fallback" source.git; then
+              comment "Migration failed: neither source repository could be cloned."
+              exit 20
+            fi
           fi
 
           cd source.git
-          test -n "$(git for-each-ref --format='%(refname)' refs/heads)"
+          if [ -z "$(git for-each-ref --format='%(refname)' refs/heads)" ]; then
+            comment "Migration failed: the source clone contained no branches."
+            exit 21
+          fi
 
-          git push --force "$destination_url" 'refs/heads/*:refs/heads/*'
-          git push --force "$destination_url" 'refs/tags/*:refs/tags/*'
+          if ! git push --force "$destination_url" 'refs/heads/*:refs/heads/*'; then
+            comment "Migration failed while pushing branches to the destination."
+            exit 30
+          fi
+
+          if ! git push --force "$destination_url" 'refs/tags/*:refs/tags/*'; then
+            comment "Branches were copied, but pushing tags failed."
+            exit 31
+          fi
 
           comment "Migration completed successfully."
