@@ -1,0 +1,29 @@
+name: One-time GitLab migration
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mirror GitLab branches and tags into this repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          source_url="https://gitlab.com/ales27pm/worldDOMINATION.git"
+          destination_url="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+          git clone --mirror "$source_url" source.git
+          cd source.git
+
+          test -n "$(git for-each-ref --format='%(refname)' refs/heads)"
+          git push --force "$destination_url" 'refs/heads/*:refs/heads/*'
+          git push --force "$destination_url" 'refs/tags/*:refs/tags/*'
