@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 jobs:
   migrate:
@@ -19,14 +20,41 @@ jobs:
       - name: Mirror GitLab branches and tags into this repository
         env:
           GH_TOKEN: ${{ github.token }}
+          TRIGGER_ISSUE: ${{ github.event.issue.number }}
         run: |
           set -euo pipefail
           source_url="https://gitlab.com/ales27pm/worldDOMINATION.git"
           destination_url="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
 
-          git clone --mirror "$source_url" source.git
-          cd source.git
+          comment() {
+            if [ -n "${TRIGGER_ISSUE:-}" ]; then
+              gh issue comment "$TRIGGER_ISSUE" --repo "$GITHUB_REPOSITORY" --body "$1"
+            fi
+          }
 
-          test -n "$(git for-each-ref --format='%(refname)' refs/heads)"
-          git push --force "$destination_url" 'refs/heads/*:refs/heads/*'
-          git push --force "$destination_url" 'refs/tags/*:refs/tags/*'
+          comment "Migration workflow started."
+
+          if ! git clone --mirror "$source_url" source.git; then
+            comment "Migration failed while cloning the GitLab source over HTTPS. The source may require GitLab credentials or be unavailable to GitHub Actions."
+            exit 20
+          fi
+
+          cd source.git
+          if [ -z "$(git for-each-ref --format='%(refname)' refs/heads)" ]; then
+            comment "Migration failed because the GitLab clone contained no branches."
+            exit 21
+          fi
+
+          comment "GitLab clone completed; pushing branches and tags to GitHub."
+
+          if ! git push --force "$destination_url" 'refs/heads/*:refs/heads/*'; then
+            comment "Migration failed while pushing branches to the destination repository."
+            exit 30
+          fi
+
+          if ! git push --force "$destination_url" 'refs/tags/*:refs/tags/*'; then
+            comment "Branches were copied, but pushing tags failed."
+            exit 31
+          fi
+
+          comment "Migration completed successfully."
