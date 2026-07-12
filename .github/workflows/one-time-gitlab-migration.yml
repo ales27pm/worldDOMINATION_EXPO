@@ -4,36 +4,60 @@ on:
   push:
     branches:
       - main
-  pull_request_target:
+  pull_request:
     types:
       - opened
       - synchronize
+      - reopened
   workflow_dispatch:
 
 permissions:
   contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: one-time-gitlab-migration
+  cancel-in-progress: false
 
 jobs:
   migrate:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Import source snapshot
         env:
           GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
           export GIT_TERMINAL_PROMPT=0
+
+          report() {
+            if [ -n "${PR_NUMBER:-}" ]; then
+              gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "$1" || true
+            fi
+          }
+
+          failed() {
+            code=$?
+            report "GitLab migration failed with exit code ${code}."
+            exit "$code"
+          }
+          trap failed ERR
+
+          report "GitLab migration workflow started."
 
           gitlab_source="https://gitlab.com/ales27pm/worldDOMINATION.git"
           github_fallback="https://github.com/ales27pm/worldDOMINATION.git"
           destination_url="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
 
-          if timeout 90 git clone --depth 1 "$gitlab_source" source; then
+          if timeout 60 git clone --depth 1 --single-branch "$gitlab_source" source; then
             echo "Cloned the GitLab source."
           else
             rm -rf source
             echo "GitLab was not anonymously accessible; cloning the existing GitHub mirror."
-            git clone --depth 1 "$github_fallback" source
+            git clone --depth 1 --single-branch "$github_fallback" source
           fi
 
           cd source
@@ -46,3 +70,5 @@ jobs:
           git add -A
           git commit -m "Import worldDOMINATION codebase"
           git push --force "$destination_url" main:main
+
+          report "GitLab migration completed successfully."
