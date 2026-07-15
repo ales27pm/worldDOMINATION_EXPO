@@ -129,8 +129,17 @@ export interface Alliance {
   a: number;
   b: number;
   level: AllianceLevel;
-  /** Alliance lapses when a new round begins beyond this round number. */
-  expiresOnRound: number;
+  /**
+   * Classic RISK (manual, Ch. 9 "I-Com"): a pact "lasts for the duration of
+   * the current player's turn. At the end of the recipient's next turn, the
+   * alliance is deemed over." `expiresAfterPlayerId` is the recipient (`b`);
+   * the pact lapses right after that player's turn ends in round
+   * `expiresAfterRound`. Same Time RISK pacts instead always expire at the
+   * end of the round they were forged in regardless of these fields — see
+   * `finishSameTimeRound`, which is why they're left at -1/the forge round.
+   */
+  expiresAfterPlayerId: number;
+  expiresAfterRound: number;
   /**
    * Level II pacts forbid attacking the ally's territories, but the manual
    * grants one exception: "a single attack into an insignificant territory
@@ -235,7 +244,17 @@ export type GamePhase =
   | "sameTimeMove"
   | "gameOver";
 
+/** Same Time RISK's 5 army-size-keyed dice (manual, Ch. 9, "The 5 Battle Dice"). */
 export type DiceTier = "white" | "yellow" | "orange" | "red" | "black";
+
+/**
+ * Die colour for battle-report display. Classic RISK dice are NOT
+ * army-size-tiered — the manual (Ch. 9) fixes them by role: "The Attacking
+ * Player: The 3 Red Dice" / "The Defending Player: The 2 Blue Dice",
+ * regardless of how many battalions are committed. Same Time RISK is the
+ * one that colours dice by committed army size via `DiceTier`.
+ */
+export type DieColor = DiceTier | "classicAttack" | "classicDefend";
 
 export interface BattleReport {
   from: TerritoryId;
@@ -248,8 +267,8 @@ export interface BattleReport {
   defenderLosses: number;
   rounds: number;
   conquered: boolean;
-  attackerTier: DiceTier;
-  defenderTier: DiceTier;
+  attackerTier: DieColor;
+  defenderTier: DieColor;
   /** Garrison sizes when the assault began — for the battle-scene plaques.
       Absent in reports saved before this field existed. */
   attackerArmiesBefore?: number;

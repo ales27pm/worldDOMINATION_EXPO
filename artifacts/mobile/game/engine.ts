@@ -1,6 +1,6 @@
 import { allianceBetween, protectedByLevelOne, totalTroops } from "./analysis";
 import { buildDeck, findBestSet, isValidSet, shuffle, tradeValue } from "./cards";
-import { resolveBattleRound, tierForAttacker, tierForDefender } from "./dice";
+import { resolveBattleRound } from "./dice";
 import { GENERALS } from "./generals";
 import { activeTerritories, continentTerritories, CONTINENTS, TERRITORY_MAP } from "./mapData";
 import { generateMissions } from "./missions";
@@ -607,6 +607,7 @@ function endTurn(state: GameState): void {
     drawCard(state, player);
     addLog(state, `${player.name} earns a Risk card for the turn's conquests.`, "info");
   }
+  const endingRound = state.turn;
   let next = state.currentPlayer;
   let wrapped = false;
   for (let step = 1; step <= state.players.length; step += 1) {
@@ -621,21 +622,28 @@ function endTurn(state: GameState): void {
       break;
     }
   }
+  // A pact lapses the moment its recipient's "next turn" (per the manual)
+  // ends — which is `player`'s turn ending right here, in `endingRound`.
+  // Check this on every turn, not just round wraps, since the recipient's
+  // next turn can fall later in the *same* round.
+  const lapsed = state.alliances.filter(
+    (a) =>
+      (a.expiresAfterPlayerId === player.id && a.expiresAfterRound === endingRound) ||
+      !state.players[a.a]?.alive ||
+      !state.players[a.b]?.alive,
+  );
+  if (lapsed.length > 0) {
+    state.alliances = state.alliances.filter((a) => !lapsed.includes(a));
+    for (const a of lapsed) {
+      addLog(
+        state,
+        `The pact between ${state.players[a.a]?.name ?? "?"} and ${state.players[a.b]?.name ?? "?"} has lapsed.`,
+        "info",
+      );
+    }
+  }
   if (wrapped) {
     recordSnapshot(state);
-    const lapsed = state.alliances.filter(
-      (a) => a.expiresOnRound < state.turn || !state.players[a.a]?.alive || !state.players[a.b]?.alive,
-    );
-    if (lapsed.length > 0) {
-      state.alliances = state.alliances.filter((a) => !lapsed.includes(a));
-      for (const a of lapsed) {
-        addLog(
-          state,
-          `The pact between ${state.players[a.a]?.name ?? "?"} and ${state.players[a.b]?.name ?? "?"} has lapsed.`,
-          "info",
-        );
-      }
-    }
   }
   state.currentPlayer = next;
   state.lastBattle = null;
@@ -719,7 +727,13 @@ function enforceAllianceOnAttack(state: GameState, attackerId: number, defenderI
 }
 
 function forgeAlliance(state: GameState, a: number, b: number, level: AllianceLevel): void {
-  state.alliances = [...state.alliances, { a, b, level, expiresOnRound: state.turn + 1 }];
+  // Classic: pact survives until recipient b's own next turn ends — that's
+  // later *this* round if b is still upcoming in the rotation, else next
+  // round. Same Time: pacts always expire at end of the current round
+  // (finishSameTimeRound clears them unconditionally), so these fields are
+  // informational only there.
+  const expiresAfterRound = b > a ? state.turn : state.turn + 1;
+  state.alliances = [...state.alliances, { a, b, level, expiresAfterPlayerId: b, expiresAfterRound }];
   addLog(
     state,
     `${state.players[a]?.name ?? "?"} and ${state.players[b]?.name ?? "?"} forge a ${ALLIANCE_LEVEL_INFO[level].name}.`,
@@ -956,18 +970,18 @@ function finishSameTimeRound(state: GameState): void {
   if (state.phase === "gameOver") return;
   recordSnapshot(state);
   state.turn += 1;
-  const lapsed = state.alliances.filter(
-    (a) => a.expiresOnRound < state.turn || !state.players[a.a]?.alive || !state.players[a.b]?.alive,
-  );
-  if (lapsed.length > 0) {
-    state.alliances = state.alliances.filter((a) => !lapsed.includes(a));
-    for (const a of lapsed) {
+  // Same Time RISK I-Com (manual, Ch. 9): proposals accepted "last for the
+  // current game turn only" — unlike Classic, no pact ever survives into the
+  // next round, so every pact still standing lapses unconditionally here.
+  if (state.alliances.length > 0) {
+    for (const a of state.alliances) {
       addLog(
         state,
         `The pact between ${state.players[a.a]?.name ?? "?"} and ${state.players[a.b]?.name ?? "?"} has lapsed.`,
         "info",
       );
     }
+    state.alliances = [];
   }
   startSameTimeRound(state);
 }
@@ -1231,8 +1245,11 @@ export function gameReducer(previous: GameState, action: GameAction): GameState 
         defenderLosses,
         rounds,
         conquered,
-        attackerTier: tierForAttacker(Math.max(1, attackerArmies - 1)),
-        defenderTier: tierForDefender(Math.max(1, defenderArmies)),
+        // Classic RISK dice are fixed by role, not army size (manual, Ch. 9:
+        // "The Attacking Player: The 3 Red Dice" / "The Defending Player:
+        // The 2 Blue Dice") — Same Time is the mode with size-keyed tiers.
+        attackerTier: "classicAttack",
+        defenderTier: "classicDefend",
         attackerArmiesBefore: from.armies,
         defenderArmiesBefore: to.armies,
       };

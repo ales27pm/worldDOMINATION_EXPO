@@ -19,7 +19,7 @@ import {
   useBattleSceneMode,
 } from "@/lib/battleScenes";
 import { TERRITORY_MAP } from "@/game/mapData";
-import type { BattleReport, DiceTier, GameState } from "@/game/types";
+import type { BattleReport, DieColor, GameState } from "@/game/types";
 import { RiskDie } from "./RiskDie";
 import { PieceIcon } from "./PieceSprite";
 
@@ -311,7 +311,7 @@ function Plaque({
   name: string;
   count: number | null;
   rolls: number[] | null;
-  tier: DiceTier;
+  tier: DieColor;
   losses: number;
 }) {
   const { width: sw } = useWindowDimensions();
