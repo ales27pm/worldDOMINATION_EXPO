@@ -10,6 +10,7 @@ import type {
   AllianceLevel,
   AttackOrder,
   BattleReport,
+  BattleRoundResult,
   ContinentId,
   ElectionState,
   GameAction,
@@ -1227,6 +1228,7 @@ export function gameReducer(previous: GameState, action: GameAction): GameState 
       let rounds = 0;
       let lastAttackRolls: number[] = [];
       let lastDefendRolls: number[] = [];
+      const roundResults: BattleRoundResult[] = [];
 
       do {
         const round = resolveBattleRound(attackerArmies, defenderArmies);
@@ -1236,6 +1238,12 @@ export function gameReducer(previous: GameState, action: GameAction): GameState 
         defenderLosses += round.defenderLosses;
         lastAttackRolls = round.attackerRolls;
         lastDefendRolls = round.defenderRolls;
+        roundResults.push({
+          attackerRolls: round.attackerRolls,
+          defenderRolls: round.defenderRolls,
+          attackerLosses: round.attackerLosses,
+          defenderLosses: round.defenderLosses,
+        });
         rounds += 1;
       } while (action.allOut && attackerArmies > 1 && defenderArmies > 0);
 
@@ -1265,6 +1273,7 @@ export function gameReducer(previous: GameState, action: GameAction): GameState 
         defenderTier: "classicDefend",
         attackerArmiesBefore: from.armies,
         defenderArmiesBefore: to.armies,
+        roundResults,
       };
 
       if (conquered) {

@@ -19,7 +19,7 @@ import {
   useBattleSceneMode,
 } from "@/lib/battleScenes";
 import { TERRITORY_MAP } from "@/game/mapData";
-import type { BattleReport, DieColor, GameState } from "@/game/types";
+import type { BattleReport, BattleRoundResult, DieColor, GameState } from "@/game/types";
 import { RiskDie } from "./RiskDie";
 import { PieceIcon } from "./PieceSprite";
 
@@ -61,20 +61,20 @@ export function BattleView({ game }: Props) {
   const CAV_W = SW * 0.148;
   const CAV_H = (CAV_W * 40) / 38;
   const [scene, setScene] = useState<BattleReport | null>(null);
-  const [phase, setPhase] = useState<"ready" | "rolled">("ready");
+  // How many dice exchanges have been revealed so far — 0 means the tray is
+  // still idle. Every tap reveals exactly one more round; nothing advances
+  // on its own, so the player watches (and confirms) each dice turn.
+  const [revealed, setRevealed] = useState(0);
   // Battles are keyed by the monotonic battlesFought counter — the reducer
   // deep-clones state every dispatch, so lastBattle's identity churns even
   // when no new battle happened (e.g. the occupy auto-advance would replay
   // the scene under identity keying). Seeded with the mount-time counter so
   // a restored save doesn't replay its final battle.
   const seenBattleRef = useRef<number>(game.battlesFought);
-  const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stopFns = useRef<Array<() => void>>([]);
   const soundTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const rolledRef = useRef(false);
 
   const clearAll = useCallback(() => {
-    if (dismissTimer.current) { clearTimeout(dismissTimer.current); dismissTimer.current = null; }
     soundTimers.current.forEach(clearTimeout);
     soundTimers.current = [];
     stopFns.current.forEach((s) => s());
@@ -82,7 +82,6 @@ export function BattleView({ game }: Props) {
   }, []);
 
   const dismiss = useCallback(() => {
-    rolledRef.current = false;
     clearAll();
     setScene(null);
     setBattleSceneVisible(false);
@@ -98,27 +97,45 @@ export function BattleView({ game }: Props) {
 
     if (!shouldShowBattleScene(game, report, sceneMode)) return;
 
-    rolledRef.current = false;
     clearAll();
-    setPhase("ready");
+    setRevealed(0);
     setScene(report);
     setBattleSceneVisible(true);
   }, [game, sceneMode, clearAll]);
 
-  const rollDice = useCallback(() => {
-    if (!scene || rolledRef.current) return;
-    rolledRef.current = true;
-    setPhase("rolled");
+  // Every dice exchange fought in the battle — reports from older saves (or
+  // Same Time, which aggregates differently) have no roundResults, so they
+  // fall back to a single combined "round" built from the totals.
+  const rounds: BattleRoundResult[] = scene?.roundResults?.length
+    ? scene.roundResults
+    : scene
+      ? [
+          {
+            attackerRolls: scene.attackerRolls,
+            defenderRolls: scene.defenderRolls,
+            attackerLosses: scene.attackerLosses,
+            defenderLosses: scene.defenderLosses,
+          },
+        ]
+      : [];
+  const isDone = scene !== null && revealed >= rounds.length;
+
+  // Reveal the next dice exchange on tap — plays its own sound beat but
+  // never auto-advances further; the next tap is what shows the round after.
+  const revealNext = useCallback(() => {
+    if (!scene || revealed >= rounds.length) return;
+    const round = rounds[revealed];
+    if (!round) return;
+    const next = revealed + 1;
     clearAll();
+    setRevealed(next);
 
     const timings = SCENE_TIMINGS[sceneMode === "full" ? "full" : "fast"];
 
-    // Sound: dice roll → volley/cannon → optional trumpet
+    // Sound: dice roll → volley/cannon → optional trumpet on the last round.
     stopFns.current.push(playSfx("dice_roll", { volume: 0.62 }));
 
-    const heavy =
-      scene.rounds > 2 ||
-      scene.attackerLosses + scene.defenderLosses >= 4;
+    const heavy = round.attackerLosses + round.defenderLosses >= 2;
     const t1 = setTimeout(() => {
       const names: SfxName[] = heavy
         ? ["volley_long", "roar", "cannon_a"]
@@ -127,23 +144,13 @@ export function BattleView({ game }: Props) {
     }, timings.volleyAt);
     soundTimers.current.push(t1);
 
-    if (scene.conquered) {
+    if (next === rounds.length && scene.conquered) {
       const t2 = setTimeout(() => {
         stopFns.current.push(playSfx("trumpet", { volume: 0.5 }));
       }, timings.trumpetAt);
       soundTimers.current.push(t2);
     }
-
-    dismissTimer.current = setTimeout(dismiss, timings.hold);
-  }, [scene, sceneMode, clearAll, dismiss]);
-
-  // The dice roll themselves after a short beat — no CTA tap required.
-  useEffect(() => {
-    if (!scene || phase !== "ready") return;
-    const timings = SCENE_TIMINGS[sceneMode === "full" ? "full" : "fast"];
-    const timer = setTimeout(rollDice, timings.preRoll);
-    return () => clearTimeout(timer);
-  }, [scene, phase, sceneMode, rollDice]);
+  }, [scene, rounds, revealed, sceneMode, clearAll]);
 
   // Cleanup on unmount
   useEffect(
@@ -163,27 +170,30 @@ export function BattleView({ game }: Props) {
   const fromName = TERRITORY_MAP[scene.from]?.name ?? scene.from;
   const toName = TERRITORY_MAP[scene.to]?.name ?? scene.to;
   const backdrop = battleViewSource(scene.to);
-  const rolled = phase === "rolled";
+  const rolled = revealed > 0;
+  const currentRound = rolled ? rounds[revealed - 1] ?? null : null;
+
+  // Cumulative losses through the rounds revealed so far — the roundels and
+  // standing troops tick down one dice turn at a time instead of jumping
+  // straight to the final tally.
+  const attackerLossesSoFar = rounds.slice(0, revealed).reduce((sum, r) => sum + r.attackerLosses, 0);
+  const defenderLossesSoFar = rounds.slice(0, revealed).reduce((sum, r) => sum + r.defenderLosses, 0);
 
   // Plaque roundels: garrison size when the assault began, ticking down to
-  // the survivors once the dice land. Hidden for reports from older saves.
+  // the survivors as each dice turn lands. Hidden for reports from older saves.
   const aBefore = scene.attackerArmiesBefore;
   const dBefore = scene.defenderArmiesBefore;
-  const aCount = typeof aBefore === "number"
-    ? Math.max(0, rolled ? aBefore - scene.attackerLosses : aBefore)
-    : null;
-  const dCount = typeof dBefore === "number"
-    ? Math.max(0, rolled ? dBefore - scene.defenderLosses : dBefore)
-    : null;
+  const aCount = typeof aBefore === "number" ? Math.max(0, aBefore - attackerLossesSoFar) : null;
+  const dCount = typeof dBefore === "number" ? Math.max(0, dBefore - defenderLossesSoFar) : null;
 
   // Troops on the field: formation strength from the pre-battle garrisons,
-  // with the fallen removed once the dice land. Formations are capped at the
-  // slot count on purpose — huge garrisons show a full formation while the
-  // roundel carries the real number, so icons and counts can differ.
+  // with the fallen removed as each dice turn lands. Formations are capped at
+  // the slot count on purpose — huge garrisons show a full formation while
+  // the roundel carries the real number, so icons and counts can differ.
   const aTroops = clamp((aBefore ?? 6) - 1, 1, ATTACK_SLOTS.length);
   const dTroops = clamp(dBefore ?? 4, 1, DEFEND_SLOTS.length);
-  const aStanding = clamp(aTroops - (rolled ? scene.attackerLosses : 0), 0, aTroops);
-  const dStanding = clamp(dTroops - (rolled ? scene.defenderLosses : 0), 0, dTroops);
+  const aStanding = clamp(aTroops - attackerLossesSoFar, 0, aTroops);
+  const dStanding = clamp(dTroops - defenderLossesSoFar, 0, dTroops);
   const aCavalry = (aBefore ?? 0) >= 6;
 
   return (
@@ -215,6 +225,11 @@ export function BattleView({ game }: Props) {
             <Text> assaults </Text>
             <Text style={{ color: defenderColor }}>{defender?.name ?? "?"}</Text>
           </Text>
+          {rounds.length > 1 && (
+            <Text style={styles.roundLineText}>
+              DICE {Math.min(revealed + (isDone ? 0 : 1), rounds.length)} OF {rounds.length}
+            </Text>
+          )}
         </View>
 
         {/* Attack arrow, under the troops like the original. */}
@@ -257,9 +272,9 @@ export function BattleView({ game }: Props) {
             tray={TRAY_ATTACKER}
             name={fromName}
             count={aCount}
-            rolls={rolled ? scene.attackerRolls : null}
-            tier={scene.attackerTier}
-            losses={scene.attackerLosses}
+            rolls={currentRound?.attackerRolls ?? null}
+            tier={currentRound?.attackerTier ?? scene.attackerTier}
+            losses={currentRound?.attackerLosses ?? 0}
           />
         </View>
         <View style={styles.defenderPlaque} pointerEvents="none">
@@ -268,28 +283,35 @@ export function BattleView({ game }: Props) {
             tray={TRAY_DEFENDER}
             name={toName}
             count={dCount}
-            rolls={rolled ? scene.defenderRolls : null}
-            tier={scene.defenderTier}
-            losses={scene.defenderLosses}
+            rolls={currentRound?.defenderRolls ?? null}
+            tier={currentRound?.defenderTier ?? scene.defenderTier}
+            losses={currentRound?.defenderLosses ?? 0}
           />
         </View>
 
-        {/* Result ribbon */}
-        {rolled && (
-          <View style={styles.ribbonWrap} pointerEvents="none">
+        {/* Result ribbon once every dice turn has been revealed, otherwise a
+            light tap hint — nothing here ever advances on its own. */}
+        <View style={styles.ribbonWrap} pointerEvents="none">
+          {isDone ? (
             <View style={styles.ribbon}>
               <Text style={[styles.ribbonText, scene.conquered ? styles.conquered : styles.repelled]}>
                 {scene.conquered ? "TERRITORY TAKEN" : "ATTACK REPELLED"}
               </Text>
               <Text style={styles.ribbonHint}>TAP TO CONTINUE</Text>
             </View>
-          </View>
-        )}
+          ) : (
+            <View style={styles.tapPill}>
+              <Text style={styles.tapPillText}>
+                {revealed === 0 ? "TAP TO ROLL" : "TAP FOR NEXT DICE TURN"}
+              </Text>
+            </View>
+          )}
+        </View>
 
-        {/* Tap anywhere: bring the roll forward, or dismiss the result. */}
+        {/* Tap anywhere: reveal the next dice turn, or dismiss once resolved. */}
         <Pressable
           style={StyleSheet.absoluteFill}
-          onPress={phase === "ready" ? rollDice : dismiss}
+          onPress={isDone ? dismiss : revealNext}
         />
       </View>
     </Modal>
@@ -402,6 +424,16 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     letterSpacing: 0.5,
+    textShadowColor: "rgba(0,0,0,0.9)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  roundLineText: {
+    marginTop: 4,
+    color: "rgba(255,214,90,0.9)",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 2,
     textShadowColor: "rgba(0,0,0,0.9)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
@@ -526,5 +558,22 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.75)",
     fontSize: 10,
     letterSpacing: 2,
+  },
+  tapPill: {
+    backgroundColor: "rgba(0,0,0,0.55)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.35)",
+    borderRadius: 14,
+    paddingVertical: 6,
+    paddingHorizontal: 18,
+  },
+  tapPillText: {
+    color: "rgba(255,255,255,0.85)",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1.5,
+    textShadowColor: "#000",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
 });

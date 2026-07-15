@@ -3,6 +3,7 @@
 - [Mobile game asset delivery](mobile-art-delivery.md) — bundle game-critical images AND audio (remote loads = silent first battle, permanent holes); bundled images need explicit sizes, not inset-only absoluteFill.
 - [Web autoplay & expo-audio](expo-web-autoplay.md) — browsers reject pre-gesture play(); expo-audio surfaces it as an uncaught NotAllowedError overlay — gate all playback behind first pointer/key input.
 - [Mobile board e2e testing](mobile-e2e-testing.md) — tester taps need fresh screenshots (camera glides ~1.5s after every tap); catch battle scenes via waitFor "assaults", not blind screenshots.
+- [Battle dice-turn pacing](battle-dice-pacing.md) — battle modal is now fully tap-driven, one dice exchange per tap, never auto-advances/dismisses; BattleReport carries per-round results.
 - [Risk II manual rule coverage](risk2-manual-coverage.md) — Classic/Capital/Mission RISK, all allocation & card-trading variants match the manual exactly; Same Time RISK is now built too (see next entry).
 - [Same Time RISK mode architecture](same-time-risk-mode.md) — simultaneous-turn variant: rotating currentPlayer as focus pointer, collapsed battle resolver, playback gated on human presence to avoid AI-only stalls.
 - [Git remote gotchas](git-remote-gotchas.md) — gitPush tool blocks on any credential helper; GitLab push needs a manual PAT + scoped helper; GitHub origin must be HTTPS; intermittent UNKNOWN_NOT_GIT on this repo.

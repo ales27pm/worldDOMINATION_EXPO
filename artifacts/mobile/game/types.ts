@@ -256,6 +256,16 @@ export type DiceTier = "white" | "yellow" | "orange" | "red" | "black";
  */
 export type DieColor = DiceTier | "classicAttack" | "classicDefend";
 
+/** One dice exchange within a battle — the unit the battle view steps through on each tap. */
+export interface BattleRoundResult {
+  attackerRolls: number[];
+  defenderRolls: number[];
+  attackerLosses: number;
+  defenderLosses: number;
+  attackerTier?: DieColor;
+  defenderTier?: DieColor;
+}
+
 export interface BattleReport {
   from: TerritoryId;
   to: TerritoryId;
@@ -273,6 +283,11 @@ export interface BattleReport {
       Absent in reports saved before this field existed. */
   attackerArmiesBefore?: number;
   defenderArmiesBefore?: number;
+  /** Every dice exchange fought in this battle, in order, so the battle view
+      can reveal one at a time on tap instead of only the final round with an
+      aggregate loss count. Absent on reports from older saves — the view
+      falls back to a single combined round built from the aggregate fields. */
+  roundResults?: BattleRoundResult[];
 }
 
 export interface PendingOccupy {
