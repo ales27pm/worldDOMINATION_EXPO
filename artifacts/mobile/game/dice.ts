@@ -5,18 +5,21 @@ import type { DiceTier } from "./types";
  * The tier color escalates with committed army strength and drives the
  * hex-die presentation in battle dispatches.
  */
+// Face totals/averages verified against the manual (Chapter 9, "The 5 Battle
+// Dice"): White 31/2.6, Yellow 35/2.9, Orange 42/3.5, Red 49/4.1, Black 54/4.5.
 export const DICE_FACES: Record<DiceTier, number[]> = {
   white: [1, 1, 1, 1, 2, 2, 2, 3, 3, 4, 5, 6],
   yellow: [1, 1, 2, 2, 2, 2, 3, 3, 4, 4, 5, 6],
-  green: [1, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 6],
+  orange: [1, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 6],
   red: [1, 2, 3, 3, 4, 4, 5, 5, 5, 5, 6, 6],
-  black: [1, 2, 3, 4, 4, 5, 5, 5, 6, 6, 6, 6],
+  black: [1, 2, 3, 4, 4, 5, 5, 6, 6, 6, 6, 6],
 };
 
+/** Colors follow the manual's stated scheme: Black > Red > Orange > Yellow > White. */
 export const DICE_TIER_COLORS: Record<DiceTier, { fill: string; text: string }> = {
   white: { fill: "#e8e2d2", text: "#2e2417" },
   yellow: { fill: "#e0b52e", text: "#2e2417" },
-  green: { fill: "#3d8533", text: "#f2ecdc" },
+  orange: { fill: "#d9711a", text: "#f2ecdc" },
   red: { fill: "#a1292e", text: "#f2ecdc" },
   black: { fill: "#26221c", text: "#f2ecdc" },
 };
@@ -24,7 +27,7 @@ export const DICE_TIER_COLORS: Record<DiceTier, { fill: string; text: string }> 
 export function tierForAttacker(armies: number): DiceTier {
   if (armies <= 3) return "white";
   if (armies <= 7) return "yellow";
-  if (armies <= 12) return "green";
+  if (armies <= 12) return "orange";
   if (armies <= 18) return "red";
   return "black";
 }
@@ -32,7 +35,7 @@ export function tierForAttacker(armies: number): DiceTier {
 export function tierForDefender(armies: number): DiceTier {
   if (armies <= 6) return "white";
   if (armies <= 12) return "yellow";
-  if (armies <= 20) return "green";
+  if (armies <= 20) return "orange";
   return "red";
 }
 
@@ -42,7 +45,7 @@ export function rollTier(tier: DiceTier): number {
 }
 
 /** Tier rank (white=1 ... black=5) — Same Time casualties equal the lower side's rank (manual, Chapter 9). */
-const TIER_RANK: Record<DiceTier, number> = { white: 1, yellow: 2, green: 3, red: 4, black: 5 };
+const TIER_RANK: Record<DiceTier, number> = { white: 1, yellow: 2, orange: 3, red: 4, black: 5 };
 
 export function rankOf(tier: DiceTier): number {
   return TIER_RANK[tier];

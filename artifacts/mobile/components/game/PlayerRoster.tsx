@@ -1,16 +1,30 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { Colors } from '@/constants/colors';
-import type { GameState } from '@/game/types';
-import { wholeContinents } from '@/game/analysis';
+import type { GameAction, GameState } from '@/game/types';
+import { ALLIANCE_LEVEL_INFO } from '@/game/types';
+import { allianceBetween, wholeContinents } from '@/game/analysis';
 import { CONTINENTS } from '@/game/mapData';
 
 interface Props {
   game: GameState;
   compact?: boolean;
+  /** When provided (and I-Com is available), lets the human propose a pact or send a threat. */
+  dispatch?: (action: GameAction) => void;
 }
 
-export default function PlayerRoster({ game, compact }: Props) {
+/** I-Com (manual, Chapter 9): only ever available with exactly one human commander at the table. */
+function iComAvailable(game: GameState): boolean {
+  return (
+    (game.phase === 'reinforcement' || game.phase === 'sameTimeReinforce') &&
+    game.players.filter((p) => p.isHuman && p.alive).length === 1
+  );
+}
+
+export default function PlayerRoster({ game, compact, dispatch }: Props) {
+  const human = game.players.find((p) => p.isHuman && p.alive);
+  const iComOpen = Boolean(dispatch) && iComAvailable(game);
+
   return (
     <View style={compact ? styles.compactContainer : styles.container}>
       {game.players.map((player) => {
@@ -21,6 +35,9 @@ export default function PlayerRoster({ game, compact }: Props) {
         const continents = wholeContinents(game, player.id);
         const isCurrentPlayer = game.currentPlayer === player.id;
         const cards = player.cards.length;
+        const pact = human && !player.isHuman ? allianceBetween(game, human.id, player.id) : null;
+        const canApproach =
+          iComOpen && human && !player.isHuman && player.alive && !pact && !game.proposalsMade.includes(player.id);
 
         if (compact) {
           return (
@@ -71,6 +88,28 @@ export default function PlayerRoster({ game, compact }: Props) {
                   <View key={c} style={[styles.continentBadge, { backgroundColor: CONTINENTS[c].color + '40' }]}>
                     <Text style={styles.continentText}>{CONTINENTS[c].name} +{CONTINENTS[c].bonus}</Text>
                   </View>
+                ))}
+              </View>
+            )}
+            {pact && (
+              <Text style={styles.pactText}>🤝 {ALLIANCE_LEVEL_INFO[pact.level].name} in effect</Text>
+            )}
+            {canApproach && dispatch && (
+              <View style={styles.iComRow}>
+                <Pressable
+                  style={styles.iComBtn}
+                  onPress={() => dispatch({ type: 'SEND_THREAT', target: player.id })}
+                >
+                  <Text style={styles.iComBtnText}>😠 Threaten</Text>
+                </Pressable>
+                {([1, 2, 3] as const).map((level) => (
+                  <Pressable
+                    key={level}
+                    style={styles.iComBtn}
+                    onPress={() => dispatch({ type: 'PROPOSE_ALLIANCE', target: player.id, level })}
+                  >
+                    <Text style={styles.iComBtnText}>🤝 Pact {level}</Text>
+                  </Pressable>
                 ))}
               </View>
             )}
@@ -125,4 +164,11 @@ const styles = StyleSheet.create({
   continentsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
   continentBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 2 },
   continentText: { color: Colors.text, fontFamily: 'Alegreya_500Medium', fontSize: 10 },
+  pactText: { color: Colors.gold, fontFamily: 'Alegreya_500Medium', fontSize: 11 },
+  iComRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 },
+  iComBtn: {
+    borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 8, paddingVertical: 4,
+    backgroundColor: Colors.bg,
+  },
+  iComBtnText: { color: Colors.textMuted, fontFamily: 'Alegreya_500Medium', fontSize: 10 },
 });

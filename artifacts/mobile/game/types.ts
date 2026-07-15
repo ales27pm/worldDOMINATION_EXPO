@@ -131,6 +131,13 @@ export interface Alliance {
   level: AllianceLevel;
   /** Alliance lapses when a new round begins beyond this round number. */
   expiresOnRound: number;
+  /**
+   * Level II pacts forbid attacking the ally's territories, but the manual
+   * grants one exception: "a single attack into an insignificant territory
+   * for RISK card purposes." This flags once that one-time allowance has
+   * been spent for the life of this pact; a further attack breaks it.
+   */
+  insignificantAttackUsed?: boolean;
 }
 
 /** An AI general's alliance offer awaiting the human commander's reply. */
@@ -162,7 +169,13 @@ export type Mission =
   | { kind: "conquerContinents"; continents: [ContinentId, ContinentId] }
   | { kind: "occupyTerritoryCount"; count: number }
   | { kind: "occupyFortified"; count: number; minArmies: number }
-  | { kind: "destroyPlayer"; targetPlayerId: number; fallbackCount: number };
+  | { kind: "destroyPlayer"; targetPlayerId: number; fallbackCount: number }
+  /** Same Time Mission 3 (manual, Chapter 6): hold a continent + presence in every other continent. */
+  | { kind: "continentPlusPresence"; continent: ContinentId }
+  /** Same Time Mission 5: hold a continent + N other territories (need not be connected to it). */
+  | { kind: "continentPlusConnected"; continent: ContinentId; count: number }
+  /** Same Time Mission 6: hold a continent + 3 specific named territories elsewhere. */
+  | { kind: "continentPlusNamed"; continent: ContinentId; territories: [TerritoryId, TerritoryId, TerritoryId] };
 
 export interface PlayerSetup {
   name: string;
@@ -222,7 +235,7 @@ export type GamePhase =
   | "sameTimeMove"
   | "gameOver";
 
-export type DiceTier = "white" | "yellow" | "green" | "red" | "black";
+export type DiceTier = "white" | "yellow" | "orange" | "red" | "black";
 
 export interface BattleReport {
   from: TerritoryId;

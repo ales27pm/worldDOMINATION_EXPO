@@ -18,7 +18,7 @@ interface TierStyle {
 const TIER_STYLE: Record<DiceTier, TierStyle> = {
   white:  { body: "#ece7dc", pips: "dark"  },
   yellow: { body: "#d3a534", pips: "light" },
-  green:  { body: "#3d8b40", pips: "light" },
+  orange: { body: "#c76a1f", pips: "light" },
   red:    { body: "#b3272d", pips: "light" },
   black:  { body: "#2f2b28", pips: "light" },
 };

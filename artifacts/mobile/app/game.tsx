@@ -549,7 +549,7 @@ function CampaignScreen({ game }: { game: GameState }) {
               <Text style={styles.rosterClose}>✕</Text>
             </Pressable>
           </View>
-          <PlayerRoster game={game} />
+          <PlayerRoster game={game} dispatch={dispatch} />
         </View>
       )}
 

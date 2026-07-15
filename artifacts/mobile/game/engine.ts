@@ -158,7 +158,15 @@ function objectiveReason(state: GameState, playerId: number): string | null {
       return `Capital RISK — ${captured} enemy capitals seized while holding their own`;
     }
   }
-  if (objective === "mission" && player.mission && missionAchieved(player.mission, state, playerId)) {
+  // Same Time Missions (manual, Chapter 6) can't be claimed before Game Round 3 —
+  // they're deliberately harder and closer to real war-game strategy.
+  const sameTimeMissionGateOpen = state.setup.turnStyle !== "sameTime" || state.turn >= 3;
+  if (
+    objective === "mission" &&
+    player.mission &&
+    sameTimeMissionGateOpen &&
+    missionAchieved(player.mission, state, playerId)
+  ) {
     return "their secret mission";
   }
   return null;
@@ -343,7 +351,7 @@ export function createGame(setup: GameSetup): GameState {
   }
 
   if (setup.objective === "mission") {
-    const missions = generateMissions(players);
+    const missions = generateMissions(players, setup.turnStyle ?? "classic");
     players.forEach((p, i) => {
       p.mission = missions[i] ?? null;
     });
@@ -674,6 +682,42 @@ function allianceAcceptChance(state: GameState, proposerId: number, targetId: nu
   return Math.min(0.95, Math.max(0.05, chance));
 }
 
+/**
+ * Enforce an I-Com pact against an attack on `defenderId`'s `target` (manual,
+ * Chapter 9, "I-Com"): Level III forbids any attack; Level I only forbids
+ * attacking the defender's wholly-owned continents or largest connected
+ * empire; Level II forbids attacks too, but allows exactly one attack into
+ * an "insignificant" (non-protected) territory before it counts as a break.
+ * Mutates `state.alliances`/grudges in place; returns nothing.
+ */
+function enforceAllianceOnAttack(state: GameState, attackerId: number, defenderId: number, target: TerritoryId): void {
+  const alliance = allianceBetween(state, attackerId, defenderId);
+  if (!alliance) return;
+  const attackerName = state.players[attackerId]?.name ?? "?";
+  const defenderName = state.players[defenderId]?.name ?? "?";
+  const protectedTarget = protectedByLevelOne(state, defenderId, target);
+  const breaksPact =
+    alliance.level === 3 ||
+    (alliance.level === 1 && protectedTarget) ||
+    (alliance.level === 2 && (protectedTarget || alliance.insignificantAttackUsed === true));
+  if (breaksPact) {
+    state.alliances = state.alliances.filter(
+      (x) => !((x.a === alliance.a && x.b === alliance.b) || (x.a === alliance.b && x.b === alliance.a)),
+    );
+    bumpGrudge(state, defenderId, attackerId, 1.5);
+    addLog(state, `${attackerName} BREAKS the pact with ${defenderName}. Treachery!`, "crimson");
+  } else if (alliance.level === 2) {
+    // Spend the pact's one-time "insignificant territory" allowance.
+    state.alliances = state.alliances.map((x) =>
+      (x.a === alliance.a && x.b === alliance.b) || (x.a === alliance.b && x.b === alliance.a)
+        ? { ...x, insignificantAttackUsed: true }
+        : x,
+    );
+    addLog(state, `${attackerName} probes ${defenderName}'s lines — the Level II pact allows it, once.`, "info");
+  }
+  bumpGrudge(state, defenderId, attackerId, 0.15);
+}
+
 function forgeAlliance(state: GameState, a: number, b: number, level: AllianceLevel): void {
   state.alliances = [...state.alliances, { a, b, level, expiresOnRound: state.turn + 1 }];
   addLog(
@@ -992,7 +1036,7 @@ export function gameReducer(previous: GameState, action: GameAction): GameState 
     }
 
     case "PROPOSE_ALLIANCE": {
-      if (state.phase !== "reinforcement" || state.pendingProposal) return previous;
+      if ((state.phase !== "reinforcement" && state.phase !== "sameTimeReinforce") || state.pendingProposal) return previous;
       if (state.players.filter((p) => p.isHuman && p.alive).length !== 1) return previous;
       const target = state.players[action.target];
       if (!target || !target.alive || target.id === player.id) return previous;
@@ -1011,7 +1055,7 @@ export function gameReducer(previous: GameState, action: GameAction): GameState 
     }
 
     case "SEND_THREAT": {
-      if (state.phase !== "reinforcement") return previous;
+      if (state.phase !== "reinforcement" && state.phase !== "sameTimeReinforce") return previous;
       if (state.players.filter((p) => p.isHuman && p.alive).length !== 1) return previous;
       const target = state.players[action.target];
       if (!target || !target.alive || target.id === player.id || target.isHuman) return previous;
@@ -1146,16 +1190,8 @@ export function gameReducer(previous: GameState, action: GameAction): GameState 
       const defenderPlayer = state.players[to.owner];
       if (!defenderPlayer) return previous;
 
-      // I-Com: attacking an ally breaks the pact (Level I only if the target is protected).
-      const alliance = allianceBetween(state, player.id, defenderPlayer.id);
-      if (alliance && (alliance.level >= 2 || protectedByLevelOne(state, defenderPlayer.id, action.to))) {
-        state.alliances = state.alliances.filter(
-          (x) => !((x.a === alliance.a && x.b === alliance.b) || (x.a === alliance.b && x.b === alliance.a)),
-        );
-        bumpGrudge(state, defenderPlayer.id, player.id, 1.5);
-        addLog(state, `${player.name} BREAKS the pact with ${defenderPlayer.name}. Treachery!`, "crimson");
-      }
-      bumpGrudge(state, defenderPlayer.id, player.id, 0.15);
+      // I-Com: enforce the pact against this attack (manual, Chapter 9).
+      enforceAllianceOnAttack(state, player.id, defenderPlayer.id, action.to);
 
       let attackerArmies = from.armies;
       let defenderArmies = to.armies;
@@ -1312,15 +1348,8 @@ export function gameReducer(previous: GameState, action: GameAction): GameState 
 
       const defenderPlayer = state.players[to.owner];
       if (defenderPlayer) {
-        const alliance = allianceBetween(state, player.id, defenderPlayer.id);
-        if (alliance && (alliance.level >= 2 || protectedByLevelOne(state, defenderPlayer.id, action.to))) {
-          state.alliances = state.alliances.filter(
-            (x) => !((x.a === alliance.a && x.b === alliance.b) || (x.a === alliance.b && x.b === alliance.a)),
-          );
-          bumpGrudge(state, defenderPlayer.id, player.id, 1.5);
-          addLog(state, `${player.name} BREAKS the pact with ${defenderPlayer.name}. Treachery!`, "crimson");
-        }
-        bumpGrudge(state, defenderPlayer.id, player.id, 0.15);
+        // I-Com: enforce the pact against this attack (manual, Chapter 9).
+        enforceAllianceOnAttack(state, player.id, defenderPlayer.id, action.to);
       }
 
       state.sameTime = {

@@ -134,6 +134,36 @@ function bestSameTimeAttack(
  * Compute the next action for the current AI player. Stateless per tick so the
  * general re-evaluates the field after every dispatch.
  */
+/**
+ * I-Com (manual, Chapter 9): each round's diplomacy phase lets an honorable
+ * general offer the lone human commander a pact, in both Classic and Same
+ * Time RISK. Only fires when there is exactly one human player, per the
+ * manual's I-Com restriction.
+ */
+function maybeProposeAlliance(state: GameState, player: GameState["players"][number], general: GeneralDef): GameAction | null {
+  const humans = state.players.filter((p) => p.isHuman && p.alive);
+  if (humans.length !== 1) return null;
+  const human = humans[0];
+  if (
+    !human ||
+    state.proposalsMade.includes(human.id) ||
+    allianceBetween(state, player.id, human.id) ||
+    (player.grudges[human.id] ?? 0) >= 0.6 ||
+    Math.random() >= general.honorLevel * 0.12
+  ) {
+    return null;
+  }
+  const sharesBorder = state.activeIds.some(
+    (id) =>
+      state.territories[id].owner === player.id &&
+      activeNeighbors(state, id).some((n) => state.territories[n].owner === human.id),
+  );
+  if (!sharesBorder) return null;
+  const level: AllianceLevel =
+    general.honorLevel > 0.8 ? (Math.random() < 0.5 ? 3 : 2) : general.honorLevel > 0.5 ? 2 : 1;
+  return { type: "PROPOSE_ALLIANCE", target: human.id, level };
+}
+
 export function aiNextAction(state: GameState): GameAction | null {
   const player = state.players[state.currentPlayer];
   if (!player || player.isHuman || state.phase === "gameOver") return null;
@@ -210,28 +240,8 @@ export function aiNextAction(state: GameState): GameAction | null {
 
   if (state.phase === "reinforcement") {
     // I-Com: honorable generals may offer the lone human commander a pact.
-    const humans = state.players.filter((p) => p.isHuman && p.alive);
-    if (humans.length === 1) {
-      const human = humans[0];
-      if (
-        human &&
-        !state.proposalsMade.includes(human.id) &&
-        !allianceBetween(state, player.id, human.id) &&
-        (player.grudges[human.id] ?? 0) < 0.6 &&
-        Math.random() < general.honorLevel * 0.12
-      ) {
-        const sharesBorder = state.activeIds.some(
-          (id) =>
-            state.territories[id].owner === player.id &&
-            activeNeighbors(state, id).some((n) => state.territories[n].owner === human.id),
-        );
-        if (sharesBorder) {
-          const level: AllianceLevel =
-            general.honorLevel > 0.8 ? (Math.random() < 0.5 ? 3 : 2) : general.honorLevel > 0.5 ? 2 : 1;
-          return { type: "PROPOSE_ALLIANCE", target: human.id, level };
-        }
-      }
-    }
+    const proposal = maybeProposeAlliance(state, player, general);
+    if (proposal) return proposal;
     const cardRule = state.setup.cardRule ?? "ascending";
     if (state.mustTrade || (player.cards.length >= 3 && findBestSet(player.cards, cardRule) !== null)) {
       const set = findBestSet(player.cards, cardRule);
@@ -298,6 +308,9 @@ export function aiNextAction(state: GameState): GameAction | null {
   if (state.phase === "sameTimeReinforce") {
     const st = state.sameTime;
     if (!st) return null;
+    // I-Com: Same Time RISK also opens each round with a diplomacy phase (manual, Chapter 9).
+    const proposal = maybeProposeAlliance(state, player, general);
+    if (proposal) return proposal;
     const cardRule = state.setup.cardRule ?? "ascending";
     if (player.cards.length >= 3 && findBestSet(player.cards, cardRule) !== null) {
       return { type: "AUTO_TRADE" };
