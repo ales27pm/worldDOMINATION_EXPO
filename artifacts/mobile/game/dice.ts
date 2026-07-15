@@ -9,7 +9,8 @@ import type { DiceTier } from "./types";
 // Dice"): White 31/2.6, Yellow 35/2.9, Orange 42/3.5, Red 49/4.1, Black 54/4.5.
 export const DICE_FACES: Record<DiceTier, number[]> = {
   white: [1, 1, 1, 1, 2, 2, 2, 3, 3, 4, 5, 6],
-  yellow: [1, 1, 2, 2, 2, 2, 3, 3, 4, 4, 5, 6],
+  // Manual specifies exactly 3 of 12 faces (25%) carry a "2" — not 4.
+  yellow: [1, 1, 1, 2, 2, 2, 3, 3, 4, 5, 5, 6],
   orange: [1, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 6],
   red: [1, 2, 3, 3, 4, 4, 5, 5, 5, 5, 6, 6],
   black: [1, 2, 3, 4, 4, 5, 5, 6, 6, 6, 6, 6],

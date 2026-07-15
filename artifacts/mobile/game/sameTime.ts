@@ -88,7 +88,9 @@ function combatRound(
   attackerTier: DiceTier;
   defenderTier: DiceTier;
 } {
-  const attackerTier = tierForAttacker(Math.max(1, attackerArmies - 1));
+  // Manual, Chapter 9: tier is keyed to the committed army's own size (e.g. an
+  // 8-battalion attack rolls Orange directly) — no "minus one" adjustment.
+  const attackerTier = tierForAttacker(Math.max(1, attackerArmies));
   const defenderTier = tierForDefender(Math.max(1, defenderArmies));
   const attackerRoll = rollTier(attackerTier);
   const defenderRoll = rollTier(defenderTier);
