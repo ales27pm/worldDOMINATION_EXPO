@@ -275,8 +275,13 @@ export function aiNextAction(state: GameState): GameAction | null {
     }
     const attack = bestAttack(state, player.id, general);
     if (attack) {
-      const allOut = attack.ratio >= 1.8 || general.riskTolerance > 0.75;
-      return { type: "ATTACK", from: attack.from, to: attack.to, allOut };
+      // AI always commits maximum dice (manual: more dice raises the
+      // defender's casualty odds) — bestAttack's minRatio threshold already
+      // makes the AI stand down (or pick another target) once the odds sour,
+      // which is the same "retreat or continue" decision a human faces.
+      const fromArmies = state.territories[attack.from].armies;
+      const dice = Math.max(1, Math.min(3, fromArmies - 1));
+      return { type: "ATTACK", from: attack.from, to: attack.to, dice };
     }
     return { type: "END_ATTACK" };
   }

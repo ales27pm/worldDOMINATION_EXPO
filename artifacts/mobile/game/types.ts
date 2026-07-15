@@ -409,7 +409,8 @@ export type GameAction =
   | { type: "AUTO_TRADE" }
   | { type: "DEPLOY"; territory: TerritoryId; count: number }
   | { type: "UNDO_DEPLOY" }
-  | { type: "ATTACK"; from: TerritoryId; to: TerritoryId; allOut: boolean }
+  | { type: "ATTACK"; from: TerritoryId; to: TerritoryId; dice: number }
+  | { type: "RETREAT" }
   | { type: "OCCUPY"; count: number }
   | { type: "END_ATTACK" }
   | { type: "FORTIFY"; from: TerritoryId; to: TerritoryId; count: number }

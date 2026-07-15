@@ -19,8 +19,8 @@ interface Props {
   targets: Set<TerritoryId>;
   stagedMove: StagedMove | null;
   setStagedMove: (m: StagedMove | null) => void;
-  allOut: boolean;
-  setAllOut: (v: boolean) => void;
+  diceCount: number;
+  setDiceCount: (v: number) => void;
   dispatch: (a: GameAction) => void;
   onOpenCards: () => void;
   onOpenRoster: () => void;
@@ -29,7 +29,7 @@ interface Props {
 
 export default function GamePanel({
   game, selected, targets, stagedMove, setStagedMove,
-  allOut, setAllOut, dispatch, onOpenCards, onOpenRoster, onOpenLog,
+  diceCount, setDiceCount, dispatch, onOpenCards, onOpenRoster, onOpenLog,
 }: Props) {
   const player = game.players[game.currentPlayer];
   const phase = game.phase;
@@ -131,14 +131,28 @@ export default function GamePanel({
     }
 
     if (phase === 'attack') {
+      const maxDice = selectedTerritory ? Math.max(1, Math.min(3, selectedTerritory.armies - 1)) : 3;
       return (
         <View style={styles.actionGroup}>
           {selected && selectedOwned && targets.size > 0 && (
-            <View style={styles.allOutRow}>
-              <Pressable onPress={() => setAllOut(!allOut)} style={[styles.checkBox, allOut && styles.checkBoxActive]}>
-                <Text style={[styles.checkText, allOut && styles.checkTextActive]}>{allOut ? '✓' : ''}</Text>
-              </Pressable>
-              <Text style={styles.allOutLabel}>All-Out Attack</Text>
+            <View style={styles.diceRow}>
+              <Text style={styles.diceLabel}>Dice:</Text>
+              {[1, 2, 3].map((n) => {
+                const disabled = n > maxDice;
+                const active = diceCount === n && !disabled;
+                return (
+                  <Pressable
+                    key={n}
+                    disabled={disabled}
+                    onPress={() => setDiceCount(n)}
+                    style={[styles.diceBtn, active && styles.diceBtnActive, disabled && styles.diceBtnDisabled]}
+                  >
+                    <Text style={[styles.diceBtnText, active && styles.diceBtnTextActive, disabled && styles.diceBtnTextDisabled]}>
+                      {n}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
           )}
           {selected && selectedOwned && targets.size > 0 && (
@@ -503,15 +517,17 @@ const styles = StyleSheet.create({
   actionGroup: { gap: 6 },
   deployRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   fortifyHint: { flex: 1, color: Colors.textMuted, fontFamily: 'Alegreya_400Regular', fontSize: 12 },
-  allOutRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  checkBox: {
-    width: 22, height: 22, borderWidth: 1, borderColor: Colors.border,
-    backgroundColor: 'rgba(53,37,25,0.72)', justifyContent: 'center', alignItems: 'center',
+  diceRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  diceLabel: { color: Colors.text, fontFamily: 'Alegreya_500Medium', fontSize: 13 },
+  diceBtn: {
+    width: 30, height: 30, borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: 'rgba(53,37,25,0.72)', justifyContent: 'center', alignItems: 'center', borderRadius: 4,
   },
-  checkBoxActive: { borderColor: Colors.gold, backgroundColor: Colors.gold + '33' },
-  checkText: { color: Colors.textMuted, fontSize: 14, fontFamily: 'Alegreya_700Bold' },
-  checkTextActive: { color: Colors.gold },
-  allOutLabel: { color: Colors.text, fontFamily: 'Alegreya_500Medium', fontSize: 13 },
+  diceBtnActive: { borderColor: Colors.gold, backgroundColor: Colors.gold + '33' },
+  diceBtnDisabled: { borderColor: Colors.disabled, opacity: 0.4 },
+  diceBtnText: { color: Colors.textMuted, fontSize: 14, fontFamily: 'Alegreya_700Bold' },
+  diceBtnTextActive: { color: Colors.gold },
+  diceBtnTextDisabled: { color: Colors.disabledText },
   attackHint: { color: Colors.textMuted, fontFamily: 'Alegreya_400Regular', fontSize: 12 },
   stagedLabel: { color: Colors.text, fontFamily: 'Alegreya_600SemiBold', fontSize: 13 },
   ordersList: { maxHeight: 32 },

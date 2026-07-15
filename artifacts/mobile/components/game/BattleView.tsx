@@ -19,7 +19,7 @@ import {
   useBattleSceneMode,
 } from "@/lib/battleScenes";
 import { TERRITORY_MAP } from "@/game/mapData";
-import type { BattleReport, BattleRoundResult, DieColor, GameState } from "@/game/types";
+import type { BattleReport, BattleRoundResult, DieColor, GameAction, GameState } from "@/game/types";
 import { RiskDie } from "./RiskDie";
 import { PieceIcon } from "./PieceSprite";
 
@@ -50,9 +50,10 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 
 interface Props {
   game: GameState;
+  dispatch: (action: GameAction) => void;
 }
 
-export function BattleView({ game }: Props) {
+export function BattleView({ game, dispatch }: Props) {
   const sceneMode = useBattleSceneMode();
   // Sprite sizing tracks the live window — rotation-safe.
   const { width: SW, height: SH } = useWindowDimensions();
@@ -196,6 +197,21 @@ export function BattleView({ game }: Props) {
   const dStanding = clamp(dTroops - defenderLossesSoFar, 0, dTroops);
   const aCavalry = (aBefore ?? 0) >= 6;
 
+  // Manual (Ch. 9): after any dice comparison the attacker may retreat or
+  // press on — offered only to the human commander who actually dispatched
+  // this round (Same Time resolves battles up front, so it never applies;
+  // and a defender is never offered the choice at all).
+  const canContinue =
+    isDone &&
+    !scene.conquered &&
+    !game.sameTime &&
+    game.players[scene.attacker]?.isHuman === true &&
+    aCount !== null &&
+    aCount >= 2 &&
+    dCount !== null &&
+    dCount > 0;
+  const maxNextDice = aCount !== null ? Math.max(1, Math.min(3, aCount - 1)) : 3;
+
   return (
     <Modal visible transparent animationType="fade" statusBarTranslucent>
       <View style={styles.root}>
@@ -290,15 +306,45 @@ export function BattleView({ game }: Props) {
         </View>
 
         {/* Result ribbon once every dice turn has been revealed, otherwise a
-            light tap hint — nothing here ever advances on its own. */}
-        <View style={styles.ribbonWrap} pointerEvents="none">
+            light tap hint — nothing here ever advances on its own. When the
+            battle is undecided the attacker must explicitly choose to press
+            on (with a fresh dice count) or retreat. */}
+        <View style={styles.ribbonWrap} pointerEvents={canContinue ? "box-none" : "none"}>
           {isDone ? (
-            <View style={styles.ribbon}>
-              <Text style={[styles.ribbonText, scene.conquered ? styles.conquered : styles.repelled]}>
-                {scene.conquered ? "TERRITORY TAKEN" : "ATTACK REPELLED"}
-              </Text>
-              <Text style={styles.ribbonHint}>TAP TO CONTINUE</Text>
-            </View>
+            canContinue ? (
+              <View style={styles.decisionWrap}>
+                <Text style={styles.decisionCaption}>ATTACK AGAIN WITH:</Text>
+                <View style={styles.diceMiniRow}>
+                  {[1, 2, 3]
+                    .filter((n) => n <= maxNextDice)
+                    .map((n) => (
+                      <Pressable
+                        key={n}
+                        onPress={() => dispatch({ type: "ATTACK", from: scene.from, to: scene.to, dice: n })}
+                        style={styles.diceMiniBtn}
+                      >
+                        <Text style={styles.diceMiniBtnText}>{n} {n === 1 ? "DIE" : "DICE"}</Text>
+                      </Pressable>
+                    ))}
+                </View>
+                <Pressable
+                  onPress={() => {
+                    dispatch({ type: "RETREAT" });
+                    dismiss();
+                  }}
+                  style={styles.retreatBtn}
+                >
+                  <Text style={styles.retreatBtnText}>⚑ RETREAT</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <View style={styles.ribbon}>
+                <Text style={[styles.ribbonText, scene.conquered ? styles.conquered : styles.repelled]}>
+                  {scene.conquered ? "TERRITORY TAKEN" : "ATTACK REPELLED"}
+                </Text>
+                <Text style={styles.ribbonHint}>TAP TO CONTINUE</Text>
+              </View>
+            )
           ) : (
             <View style={styles.tapPill}>
               <Text style={styles.tapPillText}>
@@ -308,11 +354,15 @@ export function BattleView({ game }: Props) {
           )}
         </View>
 
-        {/* Tap anywhere: reveal the next dice turn, or dismiss once resolved. */}
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={isDone ? dismiss : revealNext}
-        />
+        {/* Tap anywhere: reveal the next dice turn, or dismiss once resolved.
+            While a continue/retreat choice is pending, only the buttons
+            above respond — an idle tap must not silently pick either one. */}
+        {!canContinue && (
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={isDone ? dismiss : revealNext}
+          />
+        )}
       </View>
     </Modal>
   );
@@ -558,6 +608,54 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.75)",
     fontSize: 10,
     letterSpacing: 2,
+  },
+  decisionWrap: {
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.72)",
+    borderWidth: 1,
+    borderColor: "rgba(255,214,90,0.55)",
+    borderRadius: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  decisionCaption: {
+    color: "rgba(255,255,255,0.8)",
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 2,
+    textShadowColor: "#000",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  diceMiniRow: { flexDirection: "row", gap: 8 },
+  diceMiniBtn: {
+    backgroundColor: "rgba(28,44,102,0.9)",
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.4)",
+    borderRadius: 5,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+  diceMiniBtnText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 0.5,
+  },
+  retreatBtn: {
+    backgroundColor: "rgba(112,19,22,0.85)",
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.4)",
+    borderRadius: 5,
+    paddingVertical: 8,
+    paddingHorizontal: 22,
+  },
+  retreatBtnText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 1,
   },
   tapPill: {
     backgroundColor: "rgba(0,0,0,0.55)",

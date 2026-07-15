@@ -1221,31 +1221,18 @@ export function gameReducer(previous: GameState, action: GameAction): GameState 
       // I-Com: enforce the pact against this attack (manual, Chapter 9).
       enforceAllianceOnAttack(state, player.id, defenderPlayer.id, action.to);
 
-      let attackerArmies = from.armies;
-      let defenderArmies = to.armies;
-      let attackerLosses = 0;
-      let defenderLosses = 0;
-      let rounds = 0;
-      let lastAttackRolls: number[] = [];
-      let lastDefendRolls: number[] = [];
-      const roundResults: BattleRoundResult[] = [];
-
-      do {
-        const round = resolveBattleRound(attackerArmies, defenderArmies);
-        attackerArmies -= round.attackerLosses;
-        defenderArmies -= round.defenderLosses;
-        attackerLosses += round.attackerLosses;
-        defenderLosses += round.defenderLosses;
-        lastAttackRolls = round.attackerRolls;
-        lastDefendRolls = round.defenderRolls;
-        roundResults.push({
-          attackerRolls: round.attackerRolls,
-          defenderRolls: round.defenderRolls,
-          attackerLosses: round.attackerLosses,
-          defenderLosses: round.defenderLosses,
-        });
-        rounds += 1;
-      } while (action.allOut && attackerArmies > 1 && defenderArmies > 0);
+      // Manual (Ch. 9): the attacker chooses 1-3 dice each round (capped by
+      // armies present minus 1), then may retreat or continue after seeing
+      // the result — so each ATTACK dispatch resolves exactly one round.
+      const round = resolveBattleRound(from.armies, to.armies, action.dice);
+      const attackerArmies = from.armies - round.attackerLosses;
+      const defenderArmies = to.armies - round.defenderLosses;
+      const roundResults: BattleRoundResult[] = [{
+        attackerRolls: round.attackerRolls,
+        defenderRolls: round.defenderRolls,
+        attackerLosses: round.attackerLosses,
+        defenderLosses: round.defenderLosses,
+      }];
 
       const conquered = defenderArmies === 0;
       state.battlesFought += 1;
@@ -1260,11 +1247,11 @@ export function gameReducer(previous: GameState, action: GameAction): GameState 
         to: action.to,
         attacker: player.id,
         defender: defenderPlayer.id,
-        attackerRolls: lastAttackRolls,
-        defenderRolls: lastDefendRolls,
-        attackerLosses,
-        defenderLosses,
-        rounds,
+        attackerRolls: round.attackerRolls,
+        defenderRolls: round.defenderRolls,
+        attackerLosses: round.attackerLosses,
+        defenderLosses: round.defenderLosses,
+        rounds: 1,
         conquered,
         // Classic RISK dice are fixed by role, not army size (manual, Ch. 9:
         // "The Attacking Player: The 3 Red Dice" / "The Defending Player:
@@ -1280,7 +1267,7 @@ export function gameReducer(previous: GameState, action: GameAction): GameState 
         player.conqueredThisTurn = true;
         bumpGrudge(state, defenderPlayer.id, player.id, 0.15);
         // Manual: the number of dice used in the winning roll sets the minimum move-in.
-        const diceUsed = lastAttackRolls.length;
+        const diceUsed = round.attackerRolls.length;
         state.pendingOccupy = {
           from: action.from,
           to: action.to,
@@ -1289,7 +1276,7 @@ export function gameReducer(previous: GameState, action: GameAction): GameState 
         };
         addLog(
           state,
-          `${player.name} storms ${action.to} from ${action.from} (${defenderLosses} defenders slain).`,
+          `${player.name} storms ${action.to} from ${action.from} (${round.defenderLosses} defenders slain).`,
           "battle",
         );
 
@@ -1307,9 +1294,23 @@ export function gameReducer(previous: GameState, action: GameAction): GameState 
       } else {
         addLog(
           state,
-          `Battle at ${action.to}: attacker loses ${attackerLosses}, defender loses ${defenderLosses}.`,
+          `Battle at ${action.to}: attacker loses ${round.attackerLosses}, defender loses ${round.defenderLosses}.`,
           "battle",
         );
+      }
+      return state;
+    }
+
+    case "RETREAT": {
+      // Manual (Ch. 9): "the attacking player may choose to retreat or to
+      // continue attacking" after any dice comparison — a defender can never
+      // retreat, but the attacker may call it off at any point. No board
+      // state changes; this just closes out the engagement with a log entry.
+      if (state.phase !== "attack") return previous;
+      const battle = state.lastBattle;
+      if (battle && battle.attacker === player.id && !battle.conquered) {
+        const toName = TERRITORY_MAP[battle.to]?.name ?? battle.to;
+        addLog(state, `${player.name} calls off the attack on ${toName}.`, "gold");
       }
       return state;
     }

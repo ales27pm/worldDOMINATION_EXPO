@@ -62,9 +62,18 @@ export interface BattleRound {
 /**
  * Resolve one classic battle round: attacker rolls up to 3 dice (armies - 1),
  * defender up to 2, highest pairs compared, defender wins ties.
+ *
+ * The attacker chooses how many dice to commit (manual, Ch. 9: "An attacking
+ * player... can choose how many dice to attack with"), clamped to what the
+ * garrison allows. `attackerDice` omitted defaults to the maximum.
  */
-export function resolveBattleRound(attackerArmies: number, defenderArmies: number): BattleRound {
-  const attackCount = Math.min(3, attackerArmies - 1);
+export function resolveBattleRound(
+  attackerArmies: number,
+  defenderArmies: number,
+  attackerDice?: number,
+): BattleRound {
+  const maxAttackDice = Math.max(1, Math.min(3, attackerArmies - 1));
+  const attackCount = Math.max(1, Math.min(attackerDice ?? maxAttackDice, maxAttackDice));
   const defendCount = Math.min(2, defenderArmies);
   const attackerRolls = Array.from({ length: attackCount }, () => 1 + Math.floor(Math.random() * 6)).sort(
     (a, b) => b - a,

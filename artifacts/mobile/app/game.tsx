@@ -85,7 +85,7 @@ function CampaignScreen({ game }: { game: GameState }) {
   const sceneMode = useBattleSceneMode();
   const [selected, setSelected] = useState<TerritoryId | null>(null);
   const [stagedMove, setStagedMove] = useState<StagedMove | null>(null);
-  const [allOut, setAllOut] = useState(true);
+  const [diceCount, setDiceCount] = useState(3);
   const [cardsOpen, setCardsOpen] = useState(false);
   const [rosterOpen, setRosterOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
@@ -314,7 +314,8 @@ function CampaignScreen({ game }: { game: GameState }) {
     }
     if (phase === 'attack') {
       if (selected && targets.has(id)) {
-        dispatch({ type: 'ATTACK', from: selected, to: id, allOut });
+        const maxDice = Math.max(1, Math.min(3, (game.territories[selected]?.armies ?? 2) - 1));
+        dispatch({ type: 'ATTACK', from: selected, to: id, dice: Math.min(diceCount, maxDice) });
         setSelected(null);
         return;
       }
@@ -393,7 +394,7 @@ function CampaignScreen({ game }: { game: GameState }) {
       }
     }
     if (id !== selected) setSelected(null);
-  }, [game, selected, targets, allOut, isHumanActive, dispatch, player]);
+  }, [game, selected, targets, diceCount, isHumanActive, dispatch, player]);
 
   // ── Victory / game-over exit ───────────────────────────────────────────────
   const handleVictoryExit = useCallback(async () => {
@@ -529,8 +530,8 @@ function CampaignScreen({ game }: { game: GameState }) {
               targets={targets}
               stagedMove={stagedMove}
               setStagedMove={setStagedMove}
-              allOut={allOut}
-              setAllOut={setAllOut}
+              diceCount={diceCount}
+              setDiceCount={setDiceCount}
               dispatch={dispatch}
               onOpenCards={() => setCardsOpen(true)}
               onOpenRoster={() => setRosterOpen(true)}
@@ -554,7 +555,7 @@ function CampaignScreen({ game }: { game: GameState }) {
       )}
 
       {/* Cinematic battle overlay */}
-      <BattleView game={game} />
+      <BattleView game={game} dispatch={dispatch} />
 
       {/* Modals */}
       <HandoffOverlay game={game} dispatch={dispatch} />
