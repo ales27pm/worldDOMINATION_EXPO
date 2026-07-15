@@ -290,6 +290,7 @@ export function normalizeState(raw: GameState): GameState {
     deployLog: raw.deployLog ?? [],
     sameTime: raw.sameTime ?? null,
     coWinners: raw.coWinners ?? null,
+    capitalsRevealed: raw.capitalsRevealed ?? false,
     players: raw.players.map((p) => ({ ...p, grudges: p.grudges ?? {} })),
   };
 }
@@ -387,6 +388,7 @@ export function createGame(setup: GameSetup): GameState {
     deployLog: [],
     sameTime: null,
     coWinners: null,
+    capitalsRevealed: false,
   };
   addLog(state, `The campaign of MDCCCXII begins — ${OBJECTIVE_INFO[setup.objective].name}.`, "gold");
   if (setup.turnStyle === "sameTime") {
@@ -592,11 +594,21 @@ function beginCampaign(state: GameState): void {
     state.phase = "chooseCapital";
     state.currentPlayer = firstChooser;
     addLog(state, "Commanders, choose your capital cities.", "gold");
-  } else if (state.setup.turnStyle === "sameTime") {
-    startSameTimeRound(state);
   } else {
-    state.currentPlayer = 0;
-    startTurn(state);
+    // Nobody is still choosing (no capital objective, or every human already
+    // has one) — reveal now if this is the first time we've reached this
+    // point (manual, Ch. 6: capitals stay secret only until every army is
+    // placed AND every capital is chosen; both are already true here).
+    if (state.setup.objective === "capital" && !state.capitalsRevealed) {
+      state.capitalsRevealed = true;
+      addLog(state, "All capitals are disclosed. Defend your own — and march on theirs.", "gold");
+    }
+    if (state.setup.turnStyle === "sameTime") {
+      startSameTimeRound(state);
+    } else {
+      state.currentPlayer = 0;
+      startTurn(state);
+    }
   }
 }
 
@@ -1108,6 +1120,7 @@ export function gameReducer(previous: GameState, action: GameAction): GameState 
         state.currentPlayer = nextChooser;
         state.awaitingHandoff = humansCount(state.players) > 1;
       } else {
+        state.capitalsRevealed = true;
         addLog(state, "All capitals are disclosed. Defend your own — and march on theirs.", "gold");
         if (state.setup.turnStyle === "sameTime") {
           startSameTimeRound(state);
@@ -1317,6 +1330,11 @@ export function gameReducer(previous: GameState, action: GameAction): GameState 
       const from = state.territories[action.from];
       const to = state.territories[action.to];
       if (from.owner !== player.id || to.owner !== player.id) return previous;
+      // Tactical Move Phase: a single transfer between bordering (or
+      // dotted-line-linked) territories only — never a multi-hop chain
+      // through owned ground (manual, Ch. 9). The UI already restricts
+      // selectable targets to neighbours; this re-checks it server-side.
+      if (!(TERRITORY_MAP[action.from]?.neighbors ?? []).includes(action.to)) return previous;
       const count = Math.min(Math.max(1, action.count), from.armies - 1);
       if (count <= 0) return previous;
       setTerritory(state, action.from, { ...from, armies: from.armies - count });

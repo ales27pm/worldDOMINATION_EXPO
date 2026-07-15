@@ -377,6 +377,8 @@ export interface GameState {
   sameTime: SameTimeState | null;
   /** Same Time only: players who won a simultaneous draw together (manual, Chapter 9). Null for a solo winner. */
   coWinners: number[] | null;
+  /** Capital RISK: capitals stay secret (manual, Chapter 6) until every army is placed and every capital chosen. */
+  capitalsRevealed: boolean;
 }
 
 export type GameAction =

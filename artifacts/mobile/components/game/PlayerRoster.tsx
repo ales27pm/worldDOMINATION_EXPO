@@ -68,7 +68,7 @@ export default function PlayerRoster({ game, compact, dispatch }: Props) {
                   {!player.alive && <Text style={styles.deadBadge}>ELIMINATED</Text>}
                   {player.isHuman && <Text style={styles.humanBadge}>HUMAN</Text>}
                 </View>
-                {player.capital && (
+                {player.capital && (game.capitalsRevealed || player.id === human?.id) && (
                   <Text style={styles.capitalText}>
                     ⚑ {player.capital}
                   </Text>

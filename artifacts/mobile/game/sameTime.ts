@@ -57,23 +57,22 @@ export function restrictedReinforcementCap(state: GameState, playerId: number, t
   return friendly + 1;
 }
 
-/** Every territory reachable from `start` through the player's own connected holdings (multi-hop). */
+/**
+ * Friendly Tactical Move targets from `start` — the manual's Tactical Move
+ * Phase (Ch. 9, identical wording for Classic and Same Time) is a single
+ * transfer "from one territory to another, provided the territories border
+ * one another, or are linked by a dotted line" — i.e. direct neighbours
+ * only, never a multi-hop chain through owned territory. Dotted-line links
+ * (e.g. Alaska–Kamchatka) are already folded into `neighbors` in mapData.
+ */
 export function friendlyReachableSet(state: GameState, playerId: number, start: TerritoryId): Set<TerritoryId> {
-  const visited = new Set<TerritoryId>([start]);
-  const queue: TerritoryId[] = [start];
-  while (queue.length > 0) {
-    const current = queue.shift();
-    if (!current) break;
-    for (const n of TERRITORY_MAP[current]?.neighbors ?? []) {
-      if (!state.activeIds.includes(n)) continue;
-      if (state.territories[n]?.owner !== playerId) continue;
-      if (visited.has(n)) continue;
-      visited.add(n);
-      queue.push(n);
-    }
+  const result = new Set<TerritoryId>();
+  for (const n of TERRITORY_MAP[start]?.neighbors ?? []) {
+    if (!state.activeIds.includes(n)) continue;
+    if (state.territories[n]?.owner !== playerId) continue;
+    result.add(n);
   }
-  visited.delete(start);
-  return visited;
+  return result;
 }
 
 /** One tiered-dice comparison; the loser's casualties equal the lower side's tier rank. Ties favor the defender. */

@@ -265,12 +265,15 @@ export const WorldBoard = React.memo(function WorldBoard({
     [game.setup.useExtraTerritories],
   );
   const capitals = useMemo(() => {
+    // Capital RISK secrecy (manual, Ch. 6): capitals stay hidden from other
+    // commanders until the reveal fires — a viewer always knows their own.
+    const viewerId = game.players.find((p) => p.isHuman)?.id;
     const map = new Map<TerritoryId, number>();
     for (const p of game.players) {
-      if (p.capital) map.set(p.capital, p.id);
+      if (p.capital && (game.capitalsRevealed || p.id === viewerId)) map.set(p.capital, p.id);
     }
     return map;
-  }, [game.players]);
+  }, [game.players, game.capitalsRevealed]);
 
   // View-modifier tint per territory (manual, Chapter 9: The View Modifier).
   const overlay = useMemo(() => {
