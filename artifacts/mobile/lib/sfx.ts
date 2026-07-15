@@ -75,6 +75,33 @@ setAudioModeAsync({
  */
 let unlocked = Platform.OS !== "web";
 
+// Belt-and-suspenders for the same issue: expo-audio's web player calls the
+// native HTMLMediaElement.play() internally without exposing (or catching)
+// the promise it returns. A global `unhandledrejection` listener competes
+// with Expo's own dev-overlay listener for that event — the overlay installs
+// its own and shows the red screen regardless of our preventDefault(), since
+// preventDefault() on this event only suppresses the browser's console
+// warning, not other application listeners. Patching play() itself so the
+// promise always has a handler means the rejection is never "unhandled" in
+// the first place, which no other listener can override.
+if (Platform.OS === "web" && typeof HTMLMediaElement !== "undefined") {
+  const proto = HTMLMediaElement.prototype as unknown as {
+    play: () => Promise<void> | void;
+    __risk2PlayPatched?: boolean;
+  };
+  if (!proto.__risk2PlayPatched) {
+    const nativePlay = proto.play;
+    proto.play = function patchedPlay(this: HTMLMediaElement) {
+      const result = nativePlay.apply(this);
+      if (result && typeof (result as Promise<void>).catch === "function") {
+        (result as Promise<void>).catch(() => {});
+      }
+      return result;
+    };
+    proto.__risk2PlayPatched = true;
+  }
+}
+
 if (!unlocked && typeof window !== "undefined") {
   const unlock = () => {
     unlocked = true;
